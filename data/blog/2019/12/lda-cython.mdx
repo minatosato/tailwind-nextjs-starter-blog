@@ -1,0 +1,241 @@
+---
+title: "LDA with gibbs samplingをCythonで実装する"
+date: 2019-12-21T14:20:00+09:00
+tags: ["machine-learning"]
+draft: false
+---
+
+この記事は、[自然言語処理 Advent Calendar 2019](https://qiita.com/advent-calendar/2019/nlp)の21日目の記事です。
+もともとはWord Embeddingsの学習について書こうと思っていましたが、ちょっと前にLDAをCythonで実装していたのでそちらについての(自然言語処理というよりはCythonの)知見を共有できればなと思っております。
+
+## はじめに
+[自然言語処理 Advent Calendar 2019](https://qiita.com/advent-calendar/2019/nlp)の昨日の記事[トピックモデルを俯瞰して学ぶ - ひつじの〜と 備忘録](http://cl-hair.hatenablog.com/entry/2019/12/20/211137)がまさにトピックモデルについて俯瞰的に書かれていたので詳細についてはこちらを参考にしましょう！この記事では学習アルゴリズムの詳細や導出は行いません。
+
+## LDAざっくり
+
+LDA(Latent Dirichlet Allocation)とは、文書の生成モデルの一種で、下記のステップで確率的に文書を生成するモデルです。
+まずトピック分布から潜在トピックが生成されます。トピック分布とは、各トピックがどれくらいの割合で存在するかを表したもので、潜在トピックはその割合を元に生成された各単語が属する具体的なトピックを表します。ここでいうトピックは陽に教師データとして与えられるものではなく、最初にハイパーパラメータとして与えられたトピック数を元に学習された結果topic#1、 topic#2、...、topic#Kで、後に人間が解釈するときにそれらに名前を割り振ることがあります。最後に、それら潜在トピックと「トピックごとの単語分布」から各単語が生成されます。
+
+## LDA with gibbs sampling
+はじめに擬似コード用の変数とPython/Cython用のNotationを下記に示します。
+
+### Notation
+| 擬似コード | Python       | 意味                                                         |
+| ---------- | ------------ | ------------------------------------------------------------ |
+| $\alpha$   | `alpha`      | トピック分布を生成するためのディリクレ分布の超パラメータ |
+| $\beta$    | `beta`       | 単語分布を生成するためのディリクレ分布の超パラメータ   |
+| $N_K$      | `N_K`        | トピック数                                                   |
+| $N_W$      | `N_W`        | 語彙数                                                       |
+| $N_D$      | `N_D`        | 文書数                                                       |
+| $n_{d,k}$  | `n_d_k`      | 文書 $d$ の単語集合に割り当てられているトピック $k$ の個数。 |
+| $n_{k, w}$ | `n_k_w`      | トピック $k$ に割り当てられている単語 $w$ の個数             |
+| $n_k$      | `n_k`        | トピック $k$ に割り当てられている単語の総数                  |
+| $D$        | `docs`       | コーパス。文書 $d$ の集合                                    |
+| $d$        | `docs[i]`    | 文書。単語 $w$ の集合                                        |
+| $w$        | `docs[i][j]` | 単語。                                                       |
+| $Z$        | `Z`          | コーパス中の各単語に対するトピックの割り当て。               |
+
+### 擬似コード
+LDA with gibbs samplingの擬似コードは下記のとおりです。
+
+01:　procedure LDA-GIBBS  
+02:　　　randomly initialize $Z$, and increment counters $n_{d,k}, n_{k,w}, n_k$  
+03:　　　loop for each iteration  
+04:　　　　　loop for each document $d$ in corpus $D$  
+05:　　　　　　　loop for each word $w$ in document $d$  
+06:　　　　　　　　　$k \leftarrow z_{d,w}$  
+07:　　　　　　　　　$n_{d,k} -= 1; n_{w, k} -=1; n_k-=1$  
+08:　　　　　　　　　loop for each topic $t \in \{1, \cdots, N_K\}$  
+09:　　　　　　　　　　　compute $P(z_{d, w} = t | Z_{-\{d, w\}}, w) \propto (n_{d,t} + \alpha) \frac{n_{t,w} + \beta}{n_t + \beta\times N_W}$  
+10:　　　　　　　　　$k \leftarrow \text{sample from}\ P(z_{d,w}|.)$  
+11:　　　　　　　　　$z_{d,w} \leftarrow k$  
+12:　　　　　　　　　$n_{d,k} += 1; n_{w, k} +=1; n_k+=1$  
+13:　end procedure
+
+
+### Python+NumPy実装
+
+上記の擬似コードを愚直にPython+NumPyコードに落とし込むと下記のようになります。
+
+```py
+# docs: List[List[int]] # idに変換済みの単語のリストのリスト
+# Z: List[List[int]]    # docsの各単語に対応するトピックの割り当てが格納された変数。初期値はランダム
+alpha = 0.1
+beta = 0.1
+
+Z: List[np.ndarray] = list(map(lambda x: np.zeros(len(x)), docs))
+n_d_k: np.ndarray = np.zeros(shape=(N_D, N_K)) # ドキュメントdのトピックkのカウント
+n_k_w: np.ndarray = np.zeros(shape=(N_K, N_W)) # トピックkの単語wのカウント
+n_k: np.ndarray = np.zeros(shape=(N_K, ))      # トピックkのカウント
+for i in range(len(docs)):
+    for j in range(len(docs[i])):
+        word = docs[i][j]
+        topic = np.random.choice(range(N_K), 1)[0] # トピックは最初はランダムに割り当てる
+        Z[i][j] = topic
+        n_k_w[topic, word] += 1
+        n_k[topic] += 1
+    for k in range(N_K):
+        n_d_k[i, k] = (Z[i] == k).sum()
+
+
+for iteration in range(iterations):
+    for i in range(len(docs)):
+        for j in range(len(docs[i])):
+            word = docs[i][j]
+            topic = Z[i][j]
+
+            n_d_k[i, topic] -= 1
+            n_k_w[topic, word] -= 1
+            n_k[topic] -= 1
+
+            prob = np.zeros(N_K)
+            for t in range(N_K):
+                prob[t] = (n_d_k[i, t] + alpha) * (n_k_w[t, word] + beta) / (n_k[t] + beta * N_W)
+            prob /= prob.sum()
+            topic = np.random.multinomial(1, prob).argmax()
+            
+            Z[i][j] = topic
+
+            n_d_k[i, topic] += 1
+            n_k_w[topic, word] += 1
+            n_k[topic] += 1
+
+```
+
+
+### Cythonize
+
+#### ポイント
+まずPythonのコードのうち高速化できるポイントを検討します。基本的にループ処理とPyObject同士の演算について気をつければかなりの高速化が図れます。
+例えば、Pythonで下記のような`List[int]`に対してループを回して参照するケースを考えます。
+
+```py
+doc: List[int] = ...
+for i in range(N):
+    docs[i]
+```
+
+このコードが遅い原因は取り出し元の`docs`と`i`がPyObjectであることにあります。
+そこで、`List[int]`(PyObject)をC++のvectorに置き換えることを考えます。
+
+```py
+from libcpp.vector cimport vector
+docs = ...
+cdef int i
+for i in range(N):
+    docs[i]
+```
+
+たったこれだけで相当の高速化が図れます。これ以外にもPythonの標準関数やNumPyの関数ではなくPyObjectの介在しないCで実装されたネイティブの関数を使う等も考えられます。
+
+```py
+from libc.math cimport exp as c_exp
+from libc.math cimport log as c_log
+```
+
+#### コード
+最終的に出来上がったコードはこちらですが、Perplexsityの計算なども書いたものが[https://github.com/minatosato/topic-model](https://github.com/minatosato/topic-model)にあるので参照してみてください。
+
+```py
+cdef unsigned int N_K = num_topics
+cdef unsigned int N_W = vocab_size
+cdef unsigned int N_D = len(docs)
+cdef unsigned int iterations = num_iterations
+
+cdef double alpha = 0.1
+cdef double beta = 0.1
+
+cdef vector[vector[int]] Z = [] # docsの各単語に対応するトピックの割り当てが格納された変数。初期値はランダム
+cdef vector[int] z = [] # docs[i]の各単語に対応するトピックの割り当てが格納された変数。
+cdef unsigned int i, j, k, word, topic, iteration
+
+cdef int[:,:] n_d_k = np.zeros(shape=(N_D, N_K)).astype(np.int32) # ドキュメントdのトピックkのカウント
+cdef int[:,:] n_k_w = np.zeros(shape=(N_K, N_W)).astype(np.int32) # トピックkの単語wのカウント
+cdef int[:] n_k = np.zeros(shape=(N_K, )).astype(np.int32)        # トピックkのカウント
+
+for i in range(N_D):
+    z = []
+    for j in range(len(docs[i])):
+        if docs[i][j] == -1:
+            break
+        
+        word = docs[i][j]
+        topic = np.random.choice(topics, 1)[0]
+        z.push_back(topic)
+
+        n_k_w[topic, word] += 1
+        n_k[topic] += 1
+        n_d_k[i, topic] += 1
+    
+    Z.push_back(z)
+    n_d[i] = len(z)
+    num_of_total_words += n_d[i]
+
+with tqdm(total=iterations, leave=True, ncols=100) as progress:
+    for iteration in range(iterations):
+        for i in range(N_D):
+            for j in range(n_d[i]):
+                word = docs[i][j]
+                topic = Z[i][j]
+
+                n_d_k[i, topic] -= 1
+                n_k_w[topic, word] -= 1
+                n_k[topic] -= 1
+
+                total = 0.0
+                for k in range(N_K):
+                    topic_distribution[k] = (n_d_k[i, k] + alpha) * (n_k_w[k, word] + beta) / (n_k[k] + beta * N_W)
+                    total += topic_distribution[k]
+                roulette = drand48() * total
+                total = 0.0
+                for k in range(N_K):
+                    total += topic_distribution[k]
+                    if total >= roulette:
+                        break
+                            
+                topic = k
+                Z[i][j] = topic
+
+                n_d_k[i, topic] += 1
+                n_k_w[topic, word] += 1
+                n_k[topic] += 1
+
+```
+
+### 実行時間比較
+データセットは例のごとく[livedoor ニュースコーパス](https://www.rondhuit.com/download.html)を使わせていただきました。実験設定としては"dokujo-tsushin"、"it-life-hack"、"sports-watch"の3つのカテゴリの記事をそれぞれ20件ずつ合計60件の記事を使ってトピック数3で学習回したときのスピードを見ます。
+
+```
+$ python lda_with_gibbs_sampling.py 
+####### LDA #######
+VOCABLARY SIZE: 4872
+NUMBER OF DOCUMENTS: 60
+NUMBER OF TOPICS: 3
+NUMBER OF ITERATIONS: 100
+ALPHA: 0.1
+BETA: 0.1
+ITER=100, CURRENT PERPLEXITY: 961.446: 100%|██████████████████████| 100/100 [01:13<00:00,  1.37it/s]
+FINAL ALPHA: 0.05943820905570373
+FINAL BETA: 0.25957261421944616
+```
+
+```
+$ python lda_with_gibbs_sampling_cython.py
+####### LDA #######
+VOCABLARY SIZE: 4872
+NUMBER OF DOCUMENTS: 60
+NUMBER OF TOPICS: 3
+NUMBER OF ITERATIONS: 100
+ALPHA: 0.1
+BETA: 0.1
+ITER=100, CURRENT PERPLEXITY: 964.203: 100%|█████████████████████| 100/100 [00:00<00:00, 642.18it/s]
+FINAL ALPHA: 0.059737557382584364
+FINAL BETA: 0.26124865459589514
+```
+
+Python+NumPyと比べてかなり速くなりました！
+
+
+### 参考
+- [トピックモデル (機械学習プロフェッショナルシリーズ)](https://amzn.to/2XceH7b)
+- [Machine Learning A Probabilistic Perspective](https://amzn.to/3be5Ee6)

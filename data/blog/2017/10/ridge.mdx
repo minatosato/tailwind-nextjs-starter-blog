@@ -1,0 +1,610 @@
+---
+title: "重回帰モデルの理論と実装 -なぜ正則化が必要か-"
+date: 2017-10-21T23:36:21+09:00
+tags: ["machine-learning"]
+draft: false
+---
+
+# 導入
+(Qiitaに投稿していた当時)Qiitaで重回帰と検索をかけても意外と数式での説明がなかったので今回は数式で攻めたいと思います。
+
+例題として、[The Boston Housing Dataset](http://www.cs.toronto.edu/~delve/data/boston/bostonDetail.html)を使います。
+
+|     | crim     | zn  | indus | chas | nox   | rm    | age  | dis    | rad | tax | ptratio | black  | lstat | medv |
+|-----|----------|-----|-------|------|-------|-------|------|--------|-----|-----|---------|--------|-------|------|
+| 1   | 0.00632  | 18  | 2.31  | 0    | 0.538 | 6.575 | 65.2 | 4.0900 | 1   | 296 | 15.3    | 396.90 | 4.98  | 24.0 |
+| 2   | 0.02731  | 0   | 7.07  | 0    | 0.469 | 6.421 | 78.9 | 4.9671 | 2   | 242 | 17.8    | 396.90 | 9.14  | 21.6 |
+| 3   | 0.02729  | 0   | 7.07  | 0    | 0.469 | 7.185 | 61.1 | 4.9671 | 2   | 242 | 17.8    | 392.83 | 4.03  | 34.7 |
+| 4   | 0.03237  | 0   | 2.18  | 0    | 0.458 | 6.998 | 45.8 | 6.0622 | 3   | 222 | 18.7    | 394.63 | 2.94  | 33.4 |
+| 5   | 0.06905  | 0   | 2.18  | 0    | 0.458 | 7.147 | 54.2 | 6.0622 | 3   | 222 | 18.7    | 396.90 | 5.33  | 36.2 |
+
+上のデータセットの列は、それぞれ次のようなことを意味しています。
+
+|column name|列名の意味するところ|
+|:---:|:---:|
+|crim|犯罪率|
+|zn|宅地の割合|
+|indus|非商用地の割合|
+|chas|チャールズ川流域かどうか|
+|nox|窒素酸化物濃度|
+|rm|平均部屋数|
+|age|築年数|
+|dis|ビジネス地区への距離|
+|rad|高速道路へのアクセス指数|
+|tax|固定資産税|
+|ptratio|学生と教師の割合|
+|black|黒人の割合|
+|lstat|低所得者の割合|
+|mdev|住宅価格の中央値|
+
+このデータを用いて、次のようなことを考えます。
+住宅価格の中央値を、目的変数として、その他変数(e.g., 犯罪率)を説明変数として予測モデルを立てたい。つまり、
+
+
+
+$$
+住宅価格中央値 = \beta_0 + \beta_1 \times 犯罪率 + \beta_2 \times 住宅の割合 + \cdots + \beta_{13} \times 低所得者層の割合
+$$
+
+
+
+と表現できるような
+
+$$\beta_0, \beta_1, \cdots, \beta_{13}$$
+
+を求めたい。
+
+# モデル式の確認
+もう少し一般化したものを考えてみます。以下の表の目的変数 $y$ を $p$ 個の説明変数 $x_1 \cdots x_p$ で予測するモデルを作成したい。
+
+|index|$y$|$x_1$|$x_2$|$\cdots$|$x_p$|
+|---:|:---:|:---:|:---:|:---:|:---:|
+|$1$|$y_1$|$x_{11}$|$x_{12}$|$\cdots$|$x_{1p}$|
+|$2$|$y_2$|$x_{21}$|$x_{22}$|$\cdots$|$x_{2p}$|
+|$\vdots$|$\vdots$|$\vdots$|$\vdots$|$\vdots$|$\vdots$|
+|$i$|$y_i$|$x_{i1}$|$x_{i2}$|$\cdots$|$x_{ip}$|
+|$\vdots$|$\vdots$|$\vdots$|$\vdots$|$\vdots$|$\vdots$|
+|$n$|$y_n$|$x_{n1}$|$x_{n2}$|$\cdots$|$x_{np}$|
+
+**重回帰モデル(multiple regression model)**は以下のように表されます。
+
+
+$$
+y = \beta_0 + \beta_1x_1 + \cdots + \beta_px_p + \epsilon
+$$
+
+
+このとき、上の表において$i$番目データは
+
+
+$$
+y_i = \beta_0 + \beta_1x_{i1} + \cdots + \beta_px_{ip} + \epsilon_i
+$$
+
+
+
+と表せる。
+ベクトルを用いて表すと、
+
+
+$$
+\begin{bmatrix}
+y_1 \\
+\vdots \\
+y_n
+\end{bmatrix} =
+\begin{bmatrix}
+1 & x_{11} & \cdots & x_{1p} \\
+\vdots & \vdots & \ddots & \vdots \\
+1 & x_{n1} & \cdots & x_{np}
+\end{bmatrix}
+\begin{bmatrix}
+\beta_0 \\
+\vdots \\
+\beta_p
+\end{bmatrix} +
+\begin{bmatrix}
+\epsilon_1 \\
+\vdots \\
+\epsilon_n
+\end{bmatrix}
+$$
+
+
+
+となり、
+
+
+$$
+\boldsymbol{y}
+ =
+\begin{bmatrix}
+y_1 \\
+\vdots \\
+y_n
+\end{bmatrix}
+$$
+
+
+
+
+$$
+X=
+\begin{bmatrix}
+1 & x_{11} & \cdots & x_{1p} \\
+\vdots & \vdots & \ddots & \vdots \\
+1 & x_{n1} & \cdots & x_{np}
+\end{bmatrix}
+$$
+
+
+
+$$
+\boldsymbol{\beta}=
+\begin{bmatrix}
+\beta_0 \\
+\vdots \\
+\beta_p
+\end{bmatrix}
+$$
+
+
+
+$$
+\boldsymbol{\epsilon}=
+\begin{bmatrix}
+\epsilon_1 \\
+\vdots \\
+\epsilon_n
+\end{bmatrix}
+$$
+
+
+とおくと、
+
+
+$$
+\boldsymbol{y} = X\boldsymbol{\beta} + \boldsymbol{\epsilon}
+$$
+
+
+
+と表すことができます。
+確認ですが、
+
+- $\boldsymbol{y}$：n次元の観測ベクトル
+- $X$：n×(p+1)次元の[計画行列(design matrix)](https://ja.wikipedia.org/wiki/%E8%A8%88%E7%94%BB%E8%A1%8C%E5%88%97)
+- $\boldsymbol{\beta}$：(p+1)次元の回帰係数ベクトル (**これを求めたい。**)
+- $\boldsymbol{\epsilon}$：n次元の誤差ベクトル
+
+となります。
+
+# 最小二乗法による推定
+未知パラメータである$\boldsymbol{\beta}$を最小二乗法により推定していきます。
+二乗誤差である
+
+
+$$
+S(\boldsymbol{\beta}) = \sum_{i=1}^{n}{\epsilon_i^2} = \boldsymbol{\epsilon}^{\mathsf{T}}\boldsymbol{\epsilon}
+= (\boldsymbol{y}-X\boldsymbol{\beta})^{\mathsf{T}}(\boldsymbol{y}-X\boldsymbol{\beta})
+$$
+
+
+を最小にする$\boldsymbol{\beta}$を求める。式を展開して、
+
+
+$$
+\begin{aligned}
+S(\boldsymbol{\beta})　& = (\boldsymbol{y}-X\boldsymbol{\beta})^{\mathsf{T}}(\boldsymbol{y}-X\boldsymbol{\beta}) \\
+& = (\boldsymbol{y}^{\mathsf{T}}-(X\boldsymbol{\beta})^{\mathsf{T}})(\boldsymbol{y}-X\boldsymbol{\beta}) \\
+& = (\boldsymbol{y}^{\mathsf{T}}-\boldsymbol{\beta}^{\mathsf{T}}X^{\mathsf{T}})(\boldsymbol{y}-X\boldsymbol{\beta}) \\
+& = \boldsymbol{y}^{\mathsf{T}}\boldsymbol{y} - \boldsymbol{\beta}^{\mathsf{T}}X^{\mathsf{T}}\boldsymbol{y}-\boldsymbol{y}^{\mathsf{T}}X\boldsymbol{\beta} + \boldsymbol{\beta}^{\mathsf{T}}X^{\mathsf{T}}X\boldsymbol{\beta} \\
+& = \boldsymbol{y}^{\mathsf{T}}\boldsymbol{y} -2\boldsymbol{y}^{\mathsf{T}}X\boldsymbol{\beta} + \boldsymbol{\beta}^{\mathsf{T}}X^{\mathsf{T}}X\boldsymbol{\beta}
+\end{aligned}
+$$
+
+
+
+これを$\boldsymbol{\beta}$で微分して、
+
+
+$$
+\frac{S(\boldsymbol{\beta})}{\partial \boldsymbol{\beta}}= -2X^{\mathsf{T}}\boldsymbol{y} + 2X^{\mathsf{T}}X\boldsymbol{\beta}
+$$
+
+
+$\frac{S(\boldsymbol{\beta})}{\partial \boldsymbol{\beta}} = 0$とおいて、
+
+
+$$
+\begin{aligned}
+-2X^{\mathsf{T}}\boldsymbol{y} + 2X^{\mathsf{T}}X\boldsymbol{\beta} & = 0 \\
+X^{\mathsf{T}}X\boldsymbol{\beta} = X^{\mathsf{T}}\boldsymbol{y}
+\end{aligned}
+$$
+
+
+
+**もし**$(X^{\mathsf{T}}X)^{-1}$**が存在するなら、**
+
+
+$$
+\boldsymbol{\beta} = (X^{\mathsf{T}}X)^{-1}X^{\mathsf{T}}\boldsymbol{y}
+$$
+
+
+
+と求めることができる。
+
+# 最尤法による推定
+参考：[データ解析 Rによる多変量解析入門 (7) 最尤法、モデル選択](http://www.is.titech.ac.jp/~shimo/class/doc/lec20021121-9.pdf)
+
+重回帰式
+
+
+$$
+\boldsymbol{y} = X\boldsymbol{\beta} + \boldsymbol{\epsilon}
+$$
+
+
+の誤差ベクトル $\boldsymbol{\epsilon}$ が多変量正規分布に従うものと仮定する。
+
+
+$$
+\boldsymbol{\epsilon} \sim N_n(\boldsymbol{0}, \sigma^2 I_n)
+$$
+
+
+このとき、
+
+
+$$
+\boldsymbol{y} \sim N_n(X\boldsymbol{\beta}, \sigma^2 I_n)
+$$
+
+
+となり、確率密度関数は、
+
+
+$$
+f(\boldsymbol{y} | X, \boldsymbol{\beta}, \sigma^2) = \frac{1}{(2\pi\sigma^2 I_n)^{n/2}}\exp \biggl[ - \frac{1}{2\sigma^2}(\boldsymbol{y}-X\boldsymbol{\beta})^{\mathsf{T}}(\boldsymbol{y}-X\boldsymbol{\beta}) \biggr]。
+$$
+
+
+尤度は、
+
+
+$$
+L(\boldsymbol{\beta}, \sigma^2 | X, \boldsymbol{y})=f(\boldsymbol{y} | X, \boldsymbol{\beta}, \sigma^2)
+$$
+
+
+であるから、対数尤度は、
+
+
+$$
+\begin{aligned}
+\ell (\boldsymbol{\beta}, \sigma^2| X, \boldsymbol{y}) & = \log L(\boldsymbol{\beta}, \sigma^2 | X, \boldsymbol{y})\\
+& = - \frac{n}{2} \log (2\pi\sigma^2) - \frac{1}{2\sigma^2}(\boldsymbol{y}-X\boldsymbol{\beta})^{\mathsf{T}}(\boldsymbol{y}-X\boldsymbol{\beta})
+\end{aligned}
+$$
+
+
+となり、最尤推定量は、
+
+
+$$
+\hat{\boldsymbol{\beta}} = (X^{\mathsf{T}}X)^{-1}X^{\mathsf{T}}\boldsymbol{y}
+$$
+
+
+
+$$
+\hat{\sigma}^2 = \frac{1}{n}(\boldsymbol{y}-X\hat{\boldsymbol{\beta}})^{\mathsf{T}}(\boldsymbol{y}-X\hat{\boldsymbol{\beta}})
+$$
+
+
+最小二乗法と同様の結果が得られた。
+
+# 実装
+以下の実装では、**説明変数同士を同じ尺度で評価するために$X$の各説明変数毎に基準化を行っています**。
+基準化(normalization)はいうまでもなく、平均値($\mu$)を引いて標準偏差($\sigma$)で割ることにより、平均値0分散1にすることです。
+
+
+$$
+z_i = \frac{x_i - \mu}{\sigma}
+$$
+
+
+## Python
+### 行列演算による実装
+- コード
+
+```py
+import pandas as pd
+import numpy as np
+from numpy import linalg as la
+
+df = pd.read_csv("Boston.csv", index_col=0)
+y = df.iloc[:,  13].values
+df = (df - df.mean())/df.std() # 基準化
+X = df.iloc[:, :13].values
+X = np.column_stack((np.ones(len(X)),X))
+beta = np.dot(np.dot(la.inv(np.dot(X.T, X)),X.T), y)
+print(beta)
+```
+- 出力
+
+```
+[  2.25328063e+01  -9.29064566e-01   1.08263896e+00   1.41039433e-01
+   6.82414381e-01  -2.05875361e+00   2.67687661e+00   1.94853355e-02
+  -3.10711605e+00   2.66485220e+00  -2.07883689e+00  -2.06264585e+00
+   8.50108862e-01  -3.74733185e+00]
+```
+
+### scikit-learnによる実装
+- コード
+
+```py
+import pandas as pd
+import numpy as np
+import sklearn.linear_model as lm
+
+df = pd.read_csv("Boston.csv", index_col=0)
+y = df.iloc[:,  13].values
+df = (df - df.mean())/df.std() # 基準化
+X = df.iloc[:, :13].values
+
+model = lm.LinearRegression()
+model.fit(X, y)
+
+print(model.intercept_)
+print(model.coef_)
+```
+- 出力
+
+```
+22.5328063241
+[-0.92906457  1.08263896  0.14103943  0.68241438 -2.05875361  2.67687661
+  0.01948534 -3.10711605  2.6648522  -2.07883689 -2.06264585  0.85010886
+ -3.74733185]
+```
+## R
+### 行列演算による実装
+- コード
+
+```r
+library(MASS)
+X <- as.matrix(Boston[, -14])
+y <- as.vector(Boston[,  14])
+X <- scale(X) #基準化
+X <- cbind(rep(1, nrow(X)), X)
+beta <- solve(t(X)%*%X) %*% t(X) %*% y
+print(beta)
+```
+- 出力
+
+```
+               [,1]
+        22.53280632
+crim    -0.92906457
+zn       1.08263896
+indus    0.14103943
+chas     0.68241438
+nox     -2.05875361
+rm       2.67687661
+age      0.01948534
+dis     -3.10711605
+rad      2.66485220
+tax     -2.07883689
+ptratio -2.06264585
+black    0.85010886
+lstat   -3.74733185
+```
+
+### lm関数による実装
+
+- コード
+
+```r
+library(MASS)
+X <- as.matrix(Boston[, -14])
+y <- as.vector(Boston[,  14])
+X <- scale(X) #基準化
+model <- lm(y ~ X)
+print(model)
+```
+- 出力
+
+```
+Call:
+lm(formula = y ~ X)
+
+Coefficients:
+(Intercept)        Xcrim          Xzn       Xindus        Xchas
+   22.53281     -0.92906      1.08264      0.14104      0.68241
+       Xnox          Xrm         Xage         Xdis         Xrad
+   -2.05875      2.67688      0.01949     -3.10712      2.66485
+       Xtax     Xptratio       Xblack       Xlstat
+   -2.07884     -2.06265      0.85011     -3.74733
+```
+
+よって求めたかった予測モデルは、
+
+
+$$
+\begin{aligned}
+住宅価格の中央値 = 22.53 - 0.93 \times 犯罪率 + 1.08 \times 宅地の割合 + \cdots -3.73 \times 低所得者の割合
+\end{aligned}
+$$
+
+
+のようになります。
+
+PythonおよびRの実行結果から、ボストンの住宅価格には「低所得者層の割合」が一番影響を与えていることがわかる。当たり前といえば当たり前だ。
+
+# 正則化
+## なぜ正則化するのか
+### 最小二乗推定量を求められないケース
+先ほどのモデルについて、$\boldsymbol{\beta}$を求めるには、$(X^{\mathsf{T}}X)^{-1}$が存在する必要があります。
+
+
+$$
+\boldsymbol{\beta} = (X^{\mathsf{T}}X)^{-1}X^{\mathsf{T}}\boldsymbol{y}
+$$
+
+
+$(X^{\mathsf{T}}X)^{-1}$が存在しないとはどのようなケースか考えてみると、それは$X$の階数がフルランクでない時だとわかります。$X$の階数がフルランクにならないのは次のような原因が考えられます。
+
+- 説明変数間の相関が強いとき
+- $n < p$となるとき
+
+他にもマルチコなどが考えられますが、私の理解が追いついていないので割愛します。(ごめんなさい)
+
+仮に説明変数に全く同じものを追加して、先ほどのコードを実行してみます。
+
+- Rコード
+
+```r
+library(MASS)
+X <- as.matrix(Boston[, -14])
+y <- as.vector(Boston[,  14])
+X <- scale(X)
+X <- cbind(X, X[, 13]) # 13番目の説明変数を14番目の説明変数をとして追加
+X <- cbind(rep(1, nrow(X)), X)
+beta <- solve(t(X)%*%X) %*% t(X) %*% y
+```
+
+- 出力
+
+```
+ solve.default(t(X) %*% X) でエラー:
+  Lapack routine dgesv: システムは正確に特異です: U[15,15] = 0
+```
+
+となり、相関が1となる変数が2つ潜んでいるため、$X$の階数がフルランクでなくなり、$(X^{\mathsf{T}}X)^{-1}$を求めることできなくなります。
+
+```
+> cor(X[, 13], X[, 14])
+[1] 1
+```
+
+### 最小二乗推定量を求められないケースへの対処法
+では先程のケースではどうすればよいか。次の対処法が考えられる。
+
+- 相関が強い説明変数同士を入れないようにする
+- 擬似逆行列を用いいる。
+- **$(X^{\mathsf{T}}X)$の逆行列が求まるようにしてあげる**
+
+太字部分が正則化で、今回はこれに注目してみます。これはどういうことかというと、$(X^{\mathsf{T}}X)^{-1}$を$(X^{\mathsf{T}}X+ \lambda\boldsymbol{I_{p+1}})^{-1}$のように何か足すことによって逆行列が求まるようにするということ。($ I$は単位行列。)つまり求める推定量は次のようになる。
+
+
+$$
+\boldsymbol{\beta_{\lambda}} = (X^{\mathsf{T}}X+ \lambda\boldsymbol{I_{p+1}})^{-1}X^{\mathsf{T}}\boldsymbol{y} \cdots (*)
+$$
+
+
+(どうしてこれで逆行列が求まるようになるかは割愛。)
+このように**正則でない行列を正則にすることによって推定量を得る方法を正則化(regularization)というらしい。**
+$\lambda(>0)$は正則化パラメータと呼ばれる。
+特に、$(*)$はL2正則化による推定量である(後述)。
+
+## L2正則化
+### 導出
+$(*)$を得るには、
+
+
+$$
+\begin{aligned}
+\boldsymbol{S_{\lambda}}(\boldsymbol{\beta})
+& = (\boldsymbol{y}-X\boldsymbol{\beta})^{\mathsf{T}}(\boldsymbol{y}-X\boldsymbol{\beta}) + \lambda\boldsymbol{\beta^{\mathsf{T}}\beta} \\
+& = ||\boldsymbol{y}-X\boldsymbol{\beta}||^2 + \lambda||\boldsymbol{\beta}||^2
+\end{aligned}
+$$
+
+
+を誤差関数として$\boldsymbol{\beta}$を推定してやればよい。これを**L2正則化**という。$\lambda||\boldsymbol{\beta}||^2$はペナルティ項と呼ばれ、これを設けることにより、過学習を抑え汎化能力を高めることができる。実際に導出してみる。
+
+
+$$
+\begin{aligned}
+\boldsymbol{S_{\lambda}}(\boldsymbol{\beta})
+& = ||\boldsymbol{y}-X\boldsymbol{\beta}||^2 + \lambda||\boldsymbol{\beta}||^2 \\
+& = (\boldsymbol{y}-X\boldsymbol{\beta})^{\mathsf{T}}(\boldsymbol{y}-X\boldsymbol{\beta}) + \lambda\boldsymbol{\beta}^{\mathsf{T}}\boldsymbol{\beta} \\
+& = (\boldsymbol{y}^{\mathsf{T}}-(X\boldsymbol{\beta})^{\mathsf{T}})(\boldsymbol{y}-X\boldsymbol{\beta})+ \lambda\boldsymbol{\beta}^{\mathsf{T}}\boldsymbol{\beta} \\
+& = (\boldsymbol{y}^{\mathsf{T}}-\boldsymbol{\beta}^{\mathsf{T}}X^{\mathsf{T}})(\boldsymbol{y}-X\boldsymbol{\beta})+ \lambda\boldsymbol{\beta}^{\mathsf{T}}\boldsymbol{\beta} \\
+& = \boldsymbol{y}^{\mathsf{T}}\boldsymbol{y} - \boldsymbol{\beta}^{\mathsf{T}}X^{\mathsf{T}}\boldsymbol{y} - \boldsymbol{y}^{\mathsf{T}}X\boldsymbol{\beta} + \boldsymbol{\beta}^{\mathsf{T}}X^{\mathsf{T}}X\boldsymbol{\beta} + \lambda\boldsymbol{\beta}^{\mathsf{T}}\boldsymbol{\beta} \\
+& = \boldsymbol{y}^{\mathsf{T}}\boldsymbol{y} - 2 \boldsymbol{\beta}^{\mathsf{T}}X^{\mathsf{T}}\boldsymbol{y} + \boldsymbol{\beta}^{\mathsf{T}}X^{\mathsf{T}}X\boldsymbol{\beta}+ \lambda\boldsymbol{\beta}^{\mathsf{T}}\boldsymbol{\beta} \\
+\end{aligned}
+$$
+
+
+これを$\boldsymbol{\beta}$で微分して、
+
+
+$$
+\frac{\boldsymbol{S_{\lambda}}(\boldsymbol{\beta})}{\partial \boldsymbol{\beta}}= -2X^{\mathsf{T}}\boldsymbol{y} + 2X^{\mathsf{T}}X\boldsymbol{\beta} + 2\lambda\boldsymbol{\beta}
+$$
+
+
+$\frac{\boldsymbol{S_{\lambda}}(\boldsymbol{\beta})}{\partial \boldsymbol{\beta}} = 0$とおいて、
+
+
+$$
+\begin{aligned}
+-2 X^{\mathsf{T}}\boldsymbol{y} + 2X^{\mathsf{T}}X\boldsymbol{\beta} + 2\lambda\boldsymbol{\beta} = 0 \\
+(X^{\mathsf{T}}X+\lambda\boldsymbol{I_{p+1}})\boldsymbol{\beta} = X^{\mathsf{T}} \boldsymbol{y} \\
+\boldsymbol{\beta} = (X^{\mathsf{T}}X + \lambda \boldsymbol{I_{p+1}})^{-1}X^{\mathsf{T}}\boldsymbol{y}
+\end{aligned}
+$$
+
+
+### 実装
+最後に、相関が1となるようなデータが入っているときでも、L2正則化を行うことにより推定量が求まるのかRで実装してみます。
+
+- Rコード
+
+```r
+library(MASS)
+X <- as.matrix(Boston[, -14])
+y <- as.vector(Boston[,  14])
+X <- scale(X)
+X <- cbind(X, X[, 13]) # 13番目の説明変数を14番目の説明変数をとして追加
+X <- cbind(rep(1, nrow(X)), X)
+lambda <- 0.001
+beta <- solve(t(X)%*%X + lambda*diag(ncol(X))) %*% t(X) %*% y
+print(beta)
+```
+
+- 出力
+
+```
+               [,1]
+        22.53276179
+crim    -0.92905477
+zn       1.08262398
+indus    0.14101604
+chas     0.68241750
+nox     -2.05872447
+rm       2.67688066
+age      0.01948267
+dis     -3.10708854
+rad      2.66477986
+tax     -2.07876854
+ptratio -2.06263709
+black    0.85010730
+lstat   -1.87366482
+        -1.87366482
+```
+今度はちゃんと求まりました！
+
+
+
+# 最後に
+今回は重回帰モデルとL2正則化について扱いました。次回はL1正則化、スパース推定について扱いたいと思います。
+**2016/01/09追記：この記事の続編は「[Lassoの理論と実装 -スパースな解の推定アルゴリズム-](../lasso/)」になります。**
+
+## 参考
+* http://www.geocities.co.jp/Technopolis/5893/2-1.pdf
+* [Python: Boston データセットで線形回帰分析を学ぶ](http://momijiame.tumblr.com/post/115202866516/python-boston-%E3%83%87%E3%83%BC%E3%82%BF%E3%82%BB%E3%83%83%E3%83%88%E3%81%A7%E7%B7%9A%E5%BD%A2%E5%9B%9E%E5%B8%B0%E5%88%86%E6%9E%90%E3%82%92%E5%AD%A6%E3%81%B6
+)

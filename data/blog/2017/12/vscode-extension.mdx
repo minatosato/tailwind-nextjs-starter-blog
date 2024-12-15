@@ -1,0 +1,38 @@
+---
+title: "VSCodeのextensionを作った話"
+date: 2017-12-16T02:41:00+09:00
+tags: ["programming"]
+draft: false
+---
+
+この記事は[Visual Studio Code Advent Calendar 2017](https://qiita.com/advent-calendar/2017/vscode)の16日目の記事です。
+
+普段は機械学習とかしてるけどたまにはこんなネタも。
+
+## つくったもの
+Markdownを日本企業で使えるメール文面に変換してくれる[maildown](https://github.com/anydown/maildown)をVSCode経由で使える[md2mail](https://marketplace.visualstudio.com/items?itemName=satopirka.md2mail)というextensionを作りました。
+もともと会社の同期が欲しがっていた機能を自分たちが使えればよいという雑なレベルで実装しました。なので中身はおかしい所がいっぱいでアレです。
+
+ダウンロードは以下から
+
+- [md2mail - Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=satopirka.md2mail)
+- [minatosato/md2mail - Github](https://github.com/minatosato/md2mail)
+
+## 使い方
+コマンドパレットから"Open Preview (md2mail)"でプレビューを開くことができます。
+
+![](/static/images/screenshot1.png)
+
+本家と違いtext lint等一部の機能が省かれていることです。
+
+一見すると表がズレて見えますが、右側のプレビューを等幅フォントで表示できるエディタかなにかにコピペすると。。。
+
+![](/static/images/screenshot2.png)
+
+## 内部処理
+内部処理は[maildown](https://github.com/anydown/maildown)のMarkdownをテキストに変換してくれる`lib/convert.js`を使ってテキストにした後にhtmlへ適当に変換、`TextDocumentContentProvider`で表示を行っております。
+
+## 最後に
+なので中身はおかしい所がいっぱいでアレなので改善[minatosato/md2mail - Github](https://github.com/minatosato/md2mail)へプルリクしていただければと思います。
+
+

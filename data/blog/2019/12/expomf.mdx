@@ -1,0 +1,324 @@
+---
+title: "ExpoMFの紹介と実装"
+date: 2019-12-30T12:32:00+09:00
+tags: ["machine-learning"]
+draft: false
+---
+
+- タイトル：Modeling User Exposure in Recommendation
+- 著者： Dawen Liang, Laurent Charlin, James McInerney, David M. Blei
+- 所属：Columbia University, McGill University
+- 発表会議：WWW 2016
+
+[[link]](https://arxiv.org/pdf/1510.07025.pdf)
+
+## はじめに
+こんにちは、[さとうみなと](https://twitter.com/minatosatou)です。2019年最後は前々から読もうと思っていたExpoMFで締めたいと思います。最近[userの閲覧確率を考慮したMatrix Factorization](https://tepppei.hatenablog.com/entry/2019/11/20/230413)でも解説されたりしていましたが、自分なりに読んで実装まで落とし込みたいと思いました。
+
+## 論文概要
+Implicit-feedback（e.g. クリックした/していない）を用いた推薦システムについて通常ユーザーがconsumeしていないアイテムを含む全てのアイテムが考慮されています。
+しかし、ユーザーはすべてのアイテムを知覚することができないので、直感的にはおかしな仮定に思えます。
+本論文では、アイテムへのユーザーのexposureを組み込む新しい確率的アプローチを提案しました。
+
+平たく言えば下記のようなモデルを仮定しています。[[参考]](https://usaito.github.io/files/191223_CFML_study.pdf)
+
+
+
+$$
+\underbrace{y_{ui}}_{\text{クリックされたかどうか}} = \underbrace{a_{ui}}_{\text{アイテムへユーザーがexposeしたかどうか}} \times \underbrace{r_{ui}}_{\text{relevance}}
+$$
+
+つまり、アイテムへユーザーがexposeする、且つrelevanceがあった場合にはじめて $y_{ui} = 1$ となります。逆にrelevanceがあってもexposeされな(i.e. ユーザーがアイテムを認知しな)ければ $y_{ui} = 0$ となります。
+
+
+
+## Exposure Matrix Factorization (提案手法)
+### Notation
+- $u$：ユーザー。$1, \cdots , U$
+- $i$：アイテム。$1, \cdots , I$
+- $A = \\{ a_{ui} \\} $：ユーザー $u$ がアイテム $i$ にexposeされたかどうかを表す行列。
+- $Y = \\{ y_{ui} \\} $：ユーザー $u$ がアイテム $i$ をクリックしたかどうかを表す行列。
+
+### Model Description
+次のような確率モデルを仮定する。
+
+
+$$
+\begin{aligned}
+\boldsymbol{\theta}_{u} & \sim \mathcal{N}\left(\mathbf{0}, \lambda_{\theta}^{-1} I_{K}\right) \\
+\boldsymbol{\beta}_{i} & \sim \mathcal{N}\left(\mathbf{0}, \lambda_{\beta}^{-1} I_{K}\right) \\
+y_{u i} | a_{u i}=1 & \sim \mathcal{N}\left(\boldsymbol{\theta}_{u}^{\mathsf{T}} \boldsymbol{\beta}_{i}, \lambda_{y}^{-1}\right) \\
+y_{u i} | a_{u i}=0 & \sim \delta_{0}
+\end{aligned}
+$$
+
+
+
+ここで、$\delta_{0}$ は $p\left(y_{u i}=0 | a_{u i}=0\right)=1$を表す。
+つまり、そもそもユーザーにアイテムがexposeされなければ必ず $y_{ui} = 0$ となる。
+また、$\mu_{ui}$ はexposureの事前確率。  
+ユーザー $u$ がアイテム $i$ にexposeされたかどうかについてベルヌーイ分布を仮定して
+
+
+
+$$
+\begin{aligned}
+p\left(a_{u i}, y_{u i} | \mu_{u i}, \boldsymbol{\theta}_{u}, \boldsymbol{\beta}_{i}, \lambda_{y}^{-1}\right)
+& = p\left(a_{u i} | \mu_{u i}, \boldsymbol{\theta}_{u}, \boldsymbol{\beta}_{i}, \lambda_{y}^{-1}\right) 
+\times p\left(y_{u i} | a_{u i}, \mu_{u i}, \boldsymbol{\theta}_{u}, \boldsymbol{\beta}_{i}, \lambda_{y}^{-1}\right) \\
+& = \operatorname{Bernoulli}\left(a_{u i} | \mu_{u i}\right) \times 
+\left(
+    \mathcal{N}\left(y_{u i} | \boldsymbol{\theta}_{u}^{\mathsf{T}} \boldsymbol{\beta}_{i}, \lambda_{y}^{-1}\right)^{a_{u i}}
+    * \mathbb{I}\left[y_{u i}=0\right]^{\left(1-a_{u i}\right)}
+\right) \\
+\end{aligned}
+$$
+
+
+
+
+以上から対数尤度は
+
+
+
+$$
+\begin{aligned}
+\log p\left(a_{u i}, y_{u i} | \mu_{u i}, \boldsymbol{\theta}_{u}, \boldsymbol{\beta}_{i}, \lambda_{y}^{-1}\right) 
+ = & \log \operatorname{Bernoulli}\left(a_{u i} | \mu_{u i}\right) \\
+& + a_{u i} \log \mathcal{N}\left(y_{u i} | \boldsymbol{\theta}_{u}^{\mathsf{T}} \boldsymbol{\beta}_{i}, \lambda_{y}^{-1}\right) \\
+& + \left(1-a_{u i}\right) \log \mathbb{I}\left[y_{u i}=0\right] 
+\end{aligned}
+$$
+
+
+
+となる。
+また、今回はexposureを表す方法としてアイテムのpopularityを用いる方法を採用。共役事前分布として下記のベータ分布を仮定する。
+
+
+
+$$
+\mu_{i} \sim \operatorname{Beta}\left(\alpha_{1}, \alpha_{2}\right)
+$$
+
+
+
+
+
+### Inference
+論文中ではEMアルゴリズムでの学習方法を紹介。  
+
+#### E-step
+Eステップでは、**positive feedbackの観測されなかった全てのユーザー、アイテムの組み合わせ** に対するexposureの期待値を計算します。
+(positive feedbackの観測された $u, i$ のペアは必ず $a_{u i} = 1$ なので。)
+
+
+
+
+$$
+\begin{aligned}
+\mathbb{E}\left[a_{u i} | \boldsymbol{\theta}_{u}, \boldsymbol{\beta}_{i}, \mu_{u i}, y_{u i}=0\right] 
+& = \sum_{a_{ui} \in 0,1} a_{ui} \times p(a_{ui} | y_{ui} = 0)\\
+& = p(a_{ui} = 1 | y_{ui} = 0)\\
+& = \frac{p(y_{ui} = 0 | a_{ui} = 1) \times p(a_{ui} = 1)}{p(y_{ui} = 0)} \\
+& = \frac{p(y_{ui} = 0 | a_{ui} = 1) \times p(a_{ui} = 1)}{p(y_{ui} = 0, a_{ui} = 0) + p(y_{ui} = 0, a_{ui} = 1)} \\
+& = \frac{\overbrace{p(a_{ui} = 1)}^{\mu_{ui}} \times p(y_{ui} = 0 | a_{ui} = 1) }{p(a_{ui} = 1) \times p(y_{ui} = 0 | a_{ui} = 1) + \underbrace{p(a_{ui} = 0)}_{=1-p(a_{ui}=1)=1-\mu_{ui}} \times \underbrace{p(y_{ui} = 0 | a_{ui} = 0)}_{=1}}\\
+& = \frac{\mu_{u i} \cdot \mathcal{N}\left(0 | \boldsymbol{\theta}_{u}^{\mathsf{T}} \boldsymbol{\beta}_{i}, \lambda_{y}^{-1}\right)}{\mu_{u i} \cdot \mathcal{N}\left(0 | \boldsymbol{\theta}_{u}^{\mathsf{T}} \boldsymbol{\beta}_{i}, \lambda_{y}^{-1}\right)+\left(1-\mu_{u i}\right)}
+\end{aligned}
+$$
+
+
+
+#### M-step
+対数尤度の $a_{ui}$ についてEステップで計算した期待値
+
+
+
+$$
+p_{u i} = \mathbb{E}\left[a_{u i} | \boldsymbol{\theta}_{u}, \boldsymbol{\beta}_{i}, \mu_{u i}, y_{u i}\right]
+$$
+
+を用いて、各パラメータ $\boldsymbol{\theta}_u$、$\boldsymbol{\beta}_i$ で偏微分し $=0$ とおいて求めた値で更新する。  
+[2020/01/05更新追記]  
+対数尤度は
+
+$$
+\begin{aligned}
+& \sum_{u,i} \log p\left(a_{u i}, y_{u i} | \mu_{u i}, \boldsymbol{\theta}_{u}, \boldsymbol{\beta}_{i}, \lambda_{y}^{-1}\right) + \sum_u \log p(\boldsymbol{\theta}_u) + \sum_i \log p(\boldsymbol{\beta}_i) \\
+& = \sum_{u,i} p_{u i} \log \mathcal{N}\left(y_{u i} | \boldsymbol{\theta}_{u}^{\mathsf{T}} \boldsymbol{\beta}_{i}, \lambda_{y}^{-1}\right) + \sum_u \log p(\boldsymbol{\theta}_u) + \sum_i \log p(\boldsymbol{\beta}_i) + \text{Const.} \\
+& = \sum_{u,i} p_{u i} \times \log \frac{1}{\sqrt{2 \pi \lambda_y^{-1}}} \exp \left(- \frac{(y_{ui} - \boldsymbol{\theta}_{u}^{\mathsf{T}} \boldsymbol{\beta}_{i})^2 \lambda_y}{2}\right) + \sum_u \log p(\boldsymbol{\theta}_u) + \sum_i \log p(\boldsymbol{\beta}_i) + \text{Const.}\\
+& = \sum_{u,i} p_{u i} \left( - \frac{(y_{ui} - \boldsymbol{\theta}_{u}^{\mathsf{T}} \boldsymbol{\beta}_{i})^2 \lambda_y}{2} \right) + \sum_u \log p(\boldsymbol{\theta}_u) + \sum_i \log p(\boldsymbol{\beta}_i) + \text{Const.}
+\end{aligned}
+$$
+
+これについて
+
+$$
+\begin{aligned}
+& \frac{\partial}{\partial \boldsymbol{\theta}_{u}} \sum_{u,i} p_{ui} \left(- \frac{(y_{ui} - \boldsymbol{\theta}_{u}^{\mathsf{T}} \boldsymbol{\beta}_{i})^2 \lambda_y}{2}\right) + \frac{\partial}{\partial \boldsymbol{\theta}_{u}} \sum_u \log p(\boldsymbol{\theta}_u)\\
+& = \frac{\partial}{\partial \boldsymbol{\theta}_{u}} \sum_{u,i} p_{ui} \left(- \frac{(y_{ui}^2 -2 y_{ui}\boldsymbol{\theta}_{u}^{\mathsf{T}} \boldsymbol{\beta}_{i} + (\boldsymbol{\theta}_{u}^{\mathsf{T}} \boldsymbol{\beta}_{i})^2) \lambda_y}{2}\right) - \lambda_{\theta} \boldsymbol{\theta}_u \\
+& = \sum_{i} \lambda_y p_{ui} (y_{ui}\boldsymbol{\beta}_i - \boldsymbol{\beta}_i\boldsymbol{\beta}_i^{\mathsf{T}} \boldsymbol{\theta}_u) - \lambda_{\theta} \boldsymbol{\theta}_u = 0
+\end{aligned}
+$$
+
+したがって
+
+$$
+\begin{aligned}
+&\boldsymbol{\theta}_{u} \leftarrow\left(\lambda_{y} \sum_{i} p_{u i} \boldsymbol{\beta}_{i} \boldsymbol{\beta}_{i}^{\mathsf{T}}+\lambda_{\theta} I_{K}\right)^{-1}\left(\sum_{i} \lambda_{y} p_{u i} y_{u i} \boldsymbol{\beta}_{i}\right)\\
+&\boldsymbol{\beta}_{i} \leftarrow\left(\lambda_{y} \sum_{u} p_{u i} \boldsymbol{\theta}_{u} \boldsymbol{\theta}_{u}^{\mathsf{T}}+\lambda_{\beta} I_{K}\right)^{-1}\left(\sum_{u} \lambda_{y} p_{u i} y_{u i} \boldsymbol{\theta}_{u}\right)
+\end{aligned}
+$$
+
+を得る。  
+[2020/01/06更新追記]  
+また、各 $\mu_i$ ついては事後分布を計算すると、
+
+$$
+\begin{aligned}
+p(\mu_i | \boldsymbol{a}_{1:U,i}) & \propto p(\boldsymbol{a}_{1:U,i} | \mu_i) \times p(\mu_i)\\
+& \propto \mu_i^{a_{1i}}(1-\mu_i)^{1-a_{1i}} \cdots \mu_i^{a_{Ui}}(1-\mu_i)^{1-a_{Ui}}\times \frac{\Gamma(\alpha_1+\alpha_2)}{\Gamma(\alpha_1) + \Gamma(\alpha_2)}\mu_i^{\alpha_1-1}(1-\mu_i)^{\alpha_2-1}\\
+& \propto \mu_i^{\alpha_1 + \sum_u a_{ui}-1}(1-\mu_i)^{\alpha_2 + (U - \sum_u a_{ui})-1}
+\end{aligned}
+$$
+この式はベータ分布
+$$
+\text{Beta}\left(\alpha_1 + \sum_u a_{ui}, \alpha_2 + U - \sum_u a_{ui}\right)
+$$
+に従っている。$a_{ui}$ は実際には期待値を用いるので $p_{ui}$ で置き換えて
+
+$$
+\operatorname{Beta}\left(\alpha_{1}+\sum_{u} p_{u i}, \alpha_{2}+U-\sum_{u} p_{u i}\right)
+$$
+
+の最頻値
+
+$$
+\mu_{i} \leftarrow \frac{\alpha_{1}+\sum_{u} p_{u i}-1}{\alpha_{1}+\alpha_{2}+U-2}
+$$
+
+を用いて更新する。
+
+
+
+#### 擬似コード
+以上を踏まえた学習の擬似コードは下記の通り。
+
+01:　input: click matrix $Y$  
+02:　randomly initialize user factors $\boldsymbol{\theta}_{1:U}$  
+03:　randomly initialize item factors $\boldsymbol{\beta}_{1:I}$, exposure priors $\mu_{1:I}$  
+04:　loop for each iteration  
+05:　　　Compute expected exposure $A$ (e-step)  
+06:　　　Update user factors $\boldsymbol{\theta}_{1:U}$ (m-step)  
+07:　　　Update item factors $\boldsymbol{\beta}_{1:I}$ (m-step)  
+08:　　　Update priors $\mu_{i}$ (m-step)  
+
+
+#### Pythonコード
+ExpoMFは[著者実装](https://github.com/dawenl/expo-mf)があって幸いPython3系でも割と簡単に動かすことができるのですが、せっかくならなるべく数式を追って理解したいので自分でも実装してみたくなりました。  
+  
+movielensのデータ取得の部分で[lightfm](https://github.com/lyst/lightfm)の力を拝借しておりますので
+
+```sh
+pip install lightfm
+```
+
+としてインストールください。  
+コード中に注釈をつけておりますので擬似コードと照らし合わせてください。
+
+```py
+import numpy as np
+from lightfm.datasets import fetch_movielens
+
+dataset = fetch_movielens(min_rating=4.0)
+
+iterations = 3
+K = 20
+lambda_theta = 1e-2
+lambda_beta = 1e-2
+lambda_y = 1e-2
+alpha_1 = 1.0
+alpha_2 = 1.0
+init_mu = 0.01
+U, I = dataset["train"].shape
+A = np.zeros(dataset["train"].shape)
+
+
+# 擬似コード01行目 = click matrix
+Y = dataset["train"].toarray()
+Y[Y > 0] = 1.0
+
+# 擬似コード02行目 = ユーザーの潜在ベクトルの初期化
+theta = np.random.uniform(low=-0.1, high=0.1, size=(U, K)) / K
+
+# 擬似コード03行目 = アイテムの潜在ベクトル、\muの初期化
+beta = np.random.uniform(low=-0.1, high=0.1, size=(I, K)) / K
+mu = np.ones(I) * init_mu
+
+# 擬似コード04行目 = loop開始
+for iteration in range(iterations):
+    print(f"CURRENT ITERATION = {iteration+1}")
+
+    # 擬似コード05行目 = Exposureの期待値計算 (e-step)
+    for u in range(U):
+        for i in range(I):
+            if Y[u, i] == 1.0:
+                A[u, i] = 1.0
+            else:
+                n_ui = lambda_y / np.sqrt(2*np.pi) * np.exp(- np.dot(theta[u], beta[i]) ** 2 * lambda_y ** 2)
+                A[u, i] = n_ui / (n_ui + (1 - mu[i]) / mu[i])
+
+    # 擬似コード06行目 = ユーザーの潜在ベクトルの更新 (m-step)
+    for u in range(U):
+        B = np.zeros((K, K))
+        a = np.zeros(K)
+        for i in range(I):
+            B += A[u, i] * beta[i, None] * beta[i, None].T
+            a += lambda_y * A[u, i] * Y[u, i] * beta[i]
+        B *= lambda_y
+        B += lambda_theta * np.eye(K)
+        new_theta = np.linalg.solve(B, a)
+        theta[u] = new_theta
+
+    # 擬似コード07行目 = アイテムの潜在ベクトルの更新 (m-step)
+    for i in range(I):
+        B = np.zeros((K, K))
+        a = np.zeros(K)
+        for u in range(U):
+            B += A[u, i] * theta[u, None] * theta[u, None].T
+            a += lambda_y * A[u, i] * Y[u, i] * theta[u]
+        B *= lambda_y
+        B += lambda_beta * np.eye(K)
+        new_beta = np.linalg.solve(B, a)
+        beta[i] = new_beta
+
+    # 擬似コード08行目 = \muの更新 (m-step)
+    mu[:] = (alpha_1 + A.sum(axis=0) - 1) / (alpha_1 + alpha_2 + U - 2)
+
+Y_test = dataset["test"].toarray()
+Y_test[Y_test > 0] = 1.0
+
+from sklearn import metrics
+predicted = theta.dot(beta.T)
+scores = np.zeros(U)
+for u in range(U):
+    fpr, tpr, thresholds = metrics.roc_curve(Y_test[u], predicted[u])
+    scores[u] = metrics.auc(fpr, tpr) if len(set(Y_test[u])) != 1 else 0.0
+
+print(f"test mean auc: {scores.mean()}")
+
+```
+
+僕の環境での実行結果は
+
+```sh
+CURRENT ITERATION = 1
+CURRENT ITERATION = 2
+CURRENT ITERATION = 3
+test mean auc: 0.8930167190209362
+```
+
+となりました。
+
+## さいごに
+今回はExpoMFについて簡単に紹介と実装を行ってみました。数式やコード、説明に間違いございましたら[Twitter](https://twitter.com/minatosatou)かコメント欄までお願い致します。

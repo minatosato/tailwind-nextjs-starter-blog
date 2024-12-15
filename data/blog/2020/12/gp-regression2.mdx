@@ -1,0 +1,105 @@
+---
+title: "ガウス過程回帰メモ(2)"
+date: 2020-12-11T00:00:00+09:00
+tags: ["machine-learning"]
+draft: false
+---
+
+この記事はアドベントカレンダー [ほぼ厚木の民](https://adventar.org/calendars/5825) の11日目記事です。
+[昨年の同じ時期に書いて放置していたエントリ](https://minatosato.com/2019/12/gp-regression/)の続き（といっても部分的な走り書きのメモ）を書きます。
+
+## [前回](../../2019/12/gp-regression/)のおさらい
+- $y = \boldsymbol{w}^{\mathsf{T}}\boldsymbol{\phi}(x)$ のパラメータ $\boldsymbol{w}$ を求めたいが、次元が指数的に増える
+- $\boldsymbol{w} \sim \mathcal{N}(\boldsymbol{0}, \lambda^2 \boldsymbol{\mathrm{I}})$ として期待値をとりパラメータを積分消去
+- $\boldsymbol{y} \sim \mathcal{N}\left( \boldsymbol{0}, \lambda^2 \Phi \Phi^{\mathrm{T}} \right)$
+
+## ガウス過程回帰モデル
+N個の観測値
+$$
+\mathcal{D} = \lbrace \left(\boldsymbol{x}_1, y_1\right), \left(\boldsymbol{x}_2, y_2\right), \cdots, \left(\boldsymbol{x}_N, y_N\right) \rbrace
+$$
+について
+$$
+y = f(\boldsymbol{x})
+$$
+の関係があり、この $f$ がガウス過程 $GP(\boldsymbol{0}, k(\boldsymbol{x}, \boldsymbol{x}^{\prime}))$ に従うものとする。  
+
+このとき、 $\mathcal{D}$ にない新しい観測値 $\boldsymbol{x}^*$ が与えられたとき、どのように $y^*$を予測するかを考える。
+$\boldsymbol{x}_1, \boldsymbol{x}_2, \cdots \boldsymbol{x}_N, \boldsymbol{x^*}$ から計算したカーネル行列を $K^{\prime}$、$(y_1, y_2, \cdots, y_N, y^*)^{\mathsf{T}}$ を $\boldsymbol{y}^{\prime}$ とおく。$\boldsymbol{y}^{\prime}$ はガウス分布 $\mathcal{N}(\boldsymbol{0}, K^{\prime})$ に従う
+
+$$
+\begin{aligned}
+\displaystyle
+
+\left(
+\begin{array}{c}
+  \boldsymbol{y}\\
+  y^*
+\end{array}
+\right) \sim \mathcal{N}
+\left(
+\boldsymbol{0},
+
+\underbrace
+{
+\left(
+\begin{array}{cc}
+  K & \boldsymbol{k}_*\\
+  \boldsymbol{k}_*^{\mathsf{T}} & k_{**}
+\end{array}
+\right)
+}_{K^{\prime}}
+
+\right)
+\end{aligned}
+$$
+
+ので、$y^*$ の分布を求めることができる。
+
+$$
+p(y^* | \boldsymbol{x}^*, \mathcal{D}) = \mathcal{N}\left(\boldsymbol{k}_*^{\mathsf{T}}K^{-1}\boldsymbol{y}, 
+k_{**}-\boldsymbol{k}_{*}^{\mathsf{T}}K^{-1}\boldsymbol{k}_{*}
+\right)
+$$
+
+$\boldsymbol{x}^*$ が複数与えられた場合($X^*$)も同様で、
+
+
+$$
+p(\boldsymbol{y}^* | X^*, \mathcal{D}) = \mathcal{N}\left(\boldsymbol{k}_*^{\mathsf{T}}K^{-1}\boldsymbol{y}, 
+\boldsymbol{k}_{**}-\boldsymbol{k}_{*}^{\mathsf{T}}K^{-1}\boldsymbol{k}_{*}
+\right)
+$$
+
+となる。
+
+## カーネルのハイパーパラメータ推定
+例えばRBFカーネル
+
+$$
+k(\boldsymbol{x}, \boldsymbol{x}^{\prime}) = \theta_1 \exp \left(-\frac{|(\boldsymbol{x}-\boldsymbol{x}^{\prime})|^2}{\theta_2}\right) + \theta_3 \delta(\boldsymbol{x},\boldsymbol{x}^{\prime})
+$$
+
+のパラメータ $\boldsymbol{\theta}=(\theta_1, \theta_2, \theta_3)$ についていい感じに推定したい。このとき $\boldsymbol{\theta}$ に依存するカーネル行列を $K_{\boldsymbol{\theta}}$ とおく。学習データの確率は
+
+
+$$
+\begin{aligned}
+p(\boldsymbol{y} | X, \boldsymbol{\theta}) & = \mathcal{N}\left(\boldsymbol{y} | \boldsymbol{0}, K_{\boldsymbol{\theta}}\right)\\
+& = \frac{1}{(2\pi)^\frac{N}{2}} \frac{1}{|K_{\boldsymbol{\theta}}|^{\frac{1}{2}}} \exp \left(-\frac{1}{2}\boldsymbol{y}^{\mathsf{T}}K_{\boldsymbol{y}}^{-1}\boldsymbol{y}\right)
+\end{aligned}
+$$
+
+対数尤度 $L$ を最大化することを考える。
+
+$$
+L = \log p(\boldsymbol{y} | X, \boldsymbol{\theta})	\propto - \log |K_{\boldsymbol{\theta}}| -\boldsymbol{y}^{\mathsf{T}}K_{\boldsymbol{\theta}}^{-1}\boldsymbol{y} + \text{Const.}
+$$
+
+$\boldsymbol{\theta}$ のある要素 $\theta$ について
+
+$$
+\frac{\partial L}{\partial \theta} = \mathrm{tr} \left(K_{\boldsymbol{\theta}}^{-1}\frac{\partial K_{\boldsymbol{\theta}}}{\partial\theta}\right) + (K_{\boldsymbol{\theta}}^{-1}\boldsymbol{y})^{\mathsf{T}} \frac{\partial K_{\boldsymbol{\theta}}}{\partial\theta} (K_{\boldsymbol{\theta}}^{-1}\boldsymbol{y})
+$$
+
+のように微分することができ、最急降下法やL-BFGSなどを使って最適化することができる。

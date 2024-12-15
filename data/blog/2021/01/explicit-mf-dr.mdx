@@ -1,0 +1,146 @@
+---
+title: "[論文メモ] Doubly Robust Joint Learning for Recommendation on Data Missing Not at Random"
+date: 2021-01-02T13:09:00+09:00
+category: "machine-learning"
+draft: false
+---
+
+## はじめに
+Explicit feedbackに基づく推薦システムにおいてバイアス除去を試みた論文を読んだので部分的にメモを紹介します。Explicit feedbackに基づく推薦システムのバイアス除去については[前回の記事](../../../2020/05/explicit-mf-ips/)も参照してみてください。
+
+- タイトル：Doubly Robust Joint Learning for Recommendation on Data Missing Not at Random
+- 著者：Xiaojie Wang, Rui Zhang, Yu Sun, Jianzhong Qi
+- 所属：University of Melbourne, Twitter
+- 発表会議：ICML 2019
+
+[[link]](https://people.eng.unimelb.edu.au/zr/publications/ICML2019_Doubly%20Robust%20Joint%20Learning%20for%20Recommendation.pdf)
+
+## 概要
+推薦システムを学習、評価するためのデータセットの多くは推薦システムの過去の推薦方策やユーザーの自己選択による選択バイアス(selection bias)の影響を受けている。
+本研究ではそういった選択バイアスに対処するための因果推論に基づく手法を提案する。
+
+## 導入
+### Notation
+- ユーザー：$\mathcal{U}=\left\{u_{1}, \dots, u_{N}\right\}$
+- アイテム：$\mathcal{I}=\left\{i_{1}, \dots, i_{M}\right\}$
+- 全ユーザー×全アイテムの組み合わせの集合：$\mathcal{D}=\mathcal{U} \times \mathcal{I}$
+- 真の評価値の行列：$\mathbf{R} \in \mathbb{R}^{N \times M}$
+    - ユーザー $u$ のアイテム $i$ に対する評価値：$r_{u,i}$
+- 予測した評価値の行列：$\hat{\mathbf{R}} \in \mathbb{R}^{N \times M}$
+    - ユーザー $u$ のアイテム $i$ に対する評価値の予測値：$\hat{r}_{u, i}$
+
+
+## Preliminaries
+もし、すべてのユーザー×アイテムの真の評価値の行列 $\mathbf{R}^f$ を観測できたなら、モデルの予測の不正確さ(prediction inaccuracy) $\mathcal{P}$ は
+
+
+$$
+\mathcal{P}=\mathcal{P}\left(\hat{\mathbf{R}}, \mathbf{R}^{f}\right)=\frac{1}{|\mathcal{D}|} \sum_{u, i \in \mathcal{D}} e_{u, i}
+$$
+
+と表現できる。$e_{u,i}$ はMAEなら $e_{u, i}=\left|\hat{r}_{u, i}-r_{u, i}\right|$、MSEなら $e_{u, i}=\left(\hat{r}_{u, i}-r_{u, i}\right)^{2}$ で表現できる。
+
+ここで $\mathbf{O} \in \{0,1\}^{N \times M}$ をindicator matrixとして定義し、エントリ $o_{u,i}=1$ なら $r_{u,i}$ が観測され、$o_{u,i}=0$ なら $r_{u,i}$ が観測されていない(missing)ことを意味する。$\mathbf{R}$ のうち観測されたものを $\mathbf{R}^o$、観測されなかったものを $\mathbf{R}^m$ と置く。
+
+
+### ナイーブな推定量
+
+$$
+\mathcal{E}_{\mathrm{N}}=\mathcal{E}_{\mathrm{N}}\left(\hat{\mathbf{R}}, \mathbf{R}^{o}\right)=\frac{1}{|\mathcal{O}|} \sum_{u, i \in \mathcal{O}} e_{u, i}
+$$
+
+where $\mathcal{O}=\left\{(u, i) | u, i \in \mathcal{D}, o_{u, i}=1\right\}$
+
+しかし観測されているデータはMNARなため $\left|\mathcal{P}-\mathbb{E}_{\mathbf{O}}\left[\mathcal{E}_{\mathrm{N}}\right]\right| \gg 0$ となりバイアスがある。
+
+
+### EIB推定量
+
+ヒューリスティックな方法としてEIB推定量(error-imputation-based estimator)が提案されている。
+これは、観測されていないエントリに対してimputed errorと呼ばれる $\hat{e}_{u, i}=\omega\left|\hat{r}_{u, i}-\gamma\right|$ (for MAE)あるいは $\hat{e}_{u, i}=\omega\left(\hat{r}_{u, i}-\gamma\right)^{2}$ (for MSE)を計算するというもので、$\omega$ や $\gamma$ はハイパーパラメータである。
+
+$$
+\mathcal{E}_{\mathrm{EIB}}=\mathcal{E}_{\mathrm{EIB}}\left(\hat{\mathbf{R}}, \mathbf{R}^{o}\right)=\frac{1}{|\mathcal{D}|} \sum_{u, i \in \mathcal{D}}\left(o_{u, i} e_{u, i}+\left(1-o_{u, i}\right) \hat{e}_{u, i}\right)
+$$
+
+
+$\delta_{u,i} = e_{u,i} - \hat{e}_{u,i}$ をerror diviationといい、imputed errorが正確である場合(i.e., $\delta_{u,i} = 0$)にEIB推定量は不偏推定量となる。
+
+
+### IPS推定量
+
+IPS推定量は前回紹介した推定量で、観測されやすさであるPropensity $p_{u, i}=P\left(o_{u, i}=1\right)$ の逆数をかける(Inverse-Propensity-Scoring)方法。Propensityの予測値を $\hat{p}_{u, i}$ とすると
+
+$$
+\mathcal{E}_{\mathrm{IPS}}=\mathcal{E}_{\mathrm{IPS}}\left(\hat{\mathbf{R}}, \mathbf{R}^{o}\right)=\frac{1}{|\mathcal{D}|} \sum_{u, i \in \mathcal{D}} \frac{o_{u, i} e_{u, i}}{\hat{p}_{u, i}}
+$$
+
+と表される。
+IPS推定量はPropensityの予測値 $\hat{p}_{u,i}$ が正確である場合(i.e., $\Delta_{u,i} = \frac{\hat{p}_{u, i}-p_{u, i}}{\hat{p}_{u, i}}=0$)に不偏推定量となる。
+
+
+### SNIPS推定量
+こちらも前回紹介した通り、IPS推定量の分散を抑えるために下記のようなSNIPS推定量が提案されている。
+
+
+$$
+\mathcal{E}_{\mathrm{SNIPS}}=\mathcal{E}_{\mathrm{SNIPS}}\left(\hat{\mathbf{R}}, \mathbf{R}^{o}\right)= \left( \sum_{u, i \in \mathcal{D}} \frac{o_{u, i}}{\hat{p}_{u, i}} \right)^{-1} \sum_{u, i \in \mathcal{D}} \frac{o_{u, i} e_{u, i}}{\hat{p}_{u, i}}
+$$
+
+
+## 提案手法=二重にロバストな推定量(Doubly Robust estimator)
+
+キーとなるアイディアは観測されたエントリについてerror diviation $\delta_{u,i}$ を補正し、その補正値にPropensityの逆数をかけることでMNARを考慮する。
+
+$$
+\begin{aligned}
+\mathcal{E}_{\mathrm{DR}}=\mathcal{E}_{\mathrm{DR}}\left(\hat{\mathbf{R}}, \mathbf{R}^{o}\right) & = \frac{1}{|\mathcal{D}|} \sum_{u, i \in \mathcal{D}}\left( \hat{e}_{u,i} + \frac{o_{u,i}\delta_{u,i}}{\hat{p}_{u,i}} \right)\\
+& = \frac{1}{|\mathcal{D}|} \sum_{u, i \in \mathcal{D}}\left( \frac{o_{u,i}}{\hat{p}_{u,i}} e_{u,i} + \left(1 - \frac{o_{u,i}}{\hat{p}_{u,i}} \right) \hat{e}_{u,i} \right)
+\end{aligned}
+$$
+
+$\hat{p}_{u,i}$、$o_{u,i}$ が変化したときのlossのイメージは
+
+||$o_{u,i}=0$|$o_{u,i}=1$|
+|---|---|---|
+|$\hat{p}_{u,i}$|$\hat{e}_{u,i}$|$\frac{{e}_{u,i}-\hat{e}_{u,i}}{\hat{p}_{u,i}}+ \hat{e}_{u,i}$|
+|$\hat{p}_{u,i} \rightarrow 1$|$\hat{e}_{u,i}$|${e}_{u,i}$|
+|$\hat{p}_{u,i} \rightarrow 0$|$\hat{e}_{u,i}$|$\approx \hat{e}_{u,i}$|
+
+のとおりとなる。
+
+
+## モデルと学習アルゴリズム
+prediction model $f_{\theta}(\boldsymbol{x}_{u,i})$ とimputation model $g_{\phi}(\boldsymbol{x}_{u,i})$ の2つのモデルを同時に学習する方法を提案。
+
+prediction modelは パラメータ $\theta$ を持ち、特徴量ベクトル $\boldsymbol{x}_{u,i}$ から真のrating $r_{u,i}$ の予測精度を高めることを目的として学習を行う。具体的なlossは下記。
+
+$$
+\mathcal{L}_{\mathrm{r}}(\theta, \phi)=\sum_{u, i \in \mathcal{D}}\left(\hat{e}_{u, i}+\frac{o_{u, i}\left(e_{u, i}-\hat{e}_{u, i}\right)}{\hat{p}_{u, i}}\right)+v\|\theta\|_{F}^{2}
+$$
+
+where
+- $e_{u,i} = ( \underbrace{f_{\theta}(\boldsymbol{x}_{u,i})}_{\hat{r}_{u, i}} - r_{u,i} )^2$
+- $\hat{e}_{u,i} = (f_{\theta}(\boldsymbol{x}_{u,i})-\left.g_{\phi}\left(\boldsymbol{x}_{u, i}\right)-\perp\left(f_{\theta}\left(\boldsymbol{x}_{u, i}\right)\right)\right)^{2}$
+
+一方imputation modelは パラメータ $\phi$ を持ち、特徴量ベクトル $\boldsymbol{x}_{u,i}$ から予測誤差 $e_{u,i}$ の推定精度を高めることを目的として学習を行う。具体的なlossは下記。
+
+$$
+\mathcal{L}_{\mathrm{e}}(\theta, \phi)=\sum_{u, i \in \mathcal{O}} \frac{\left(\hat{e}_{u, i}-e_{u, i}\right)^{2}}{\hat{p}_{u, i}}+\nu\|\phi\|_{F}^{2}
+$$
+
+where 
+- $e_{u,i} = r_{u,i} - f_{\theta}(\boldsymbol{x}_{u,i})$
+- $\hat{e}_{u,i} = g_{\phi}(\boldsymbol{x}_{u,i})$
+
+学習アルゴリズムは上記のモデルを交互に学習する方法を採用。詳細は下記を参照。
+
+![](../../images/implicit-mf-dr/joint-learning-algorithm.png)
+
+## 実験
+MARとMNARの両方で収集したデータを含むCOAT[Schnabel et al., 2016]とYAHOO[Marlin & Zemel, 2009]で検証。[前回](../../../2020/05/explicit-mf-ips/#ナイーブベイズを用いたpropensityの推定)同様Propensityの推定にMARなデータ、つまりテストデータを使っている。。。  
+結果は下記の通りで、先行研究のMF-IPSよりも良くなっていることを示している。
+![](../../images/implicit-mf-dr/table2.png)
+
+## おわりに
+一旦上記の実験結果を再現できるか実装していますが、残念ながら現時点で再現できていないです。。。再現できたらその段階で公開したいです。

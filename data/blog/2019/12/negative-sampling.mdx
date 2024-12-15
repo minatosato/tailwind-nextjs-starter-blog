@@ -1,0 +1,88 @@
+---
+title: "SGNSの目的関数について"
+date: 2019-12-22T16:28:00+09:00
+tags: ["machine-learning"]
+draft: false
+---
+
+Negative Samplingについて忘れかけていたことを復習しました。
+
+
+### Skip-gram
+
+Skip-gramモデルは入力層、中間層、出力層の3層からなる単純なニューラルネットワークで、
+単語(入力)から文脈(出力)を予測するモデルである。
+隠れ層は$N$次元のベクトルとなっており、${\tt word2vec}$が獲得している概念ベクトルはこれに相当する。
+単語$w_t$(入力)が与えられたときに、周辺の単語$w_{t+j}$(出力)が出現する確率の総乗の対数、
+
+
+$$
+\begin{aligned}
+& \frac{1}{T} \log \prod_{t=1}^{T} \prod_{-c \leq j \leq c, j \neq 0} p\left(w_{t+j} | w_{t}\right) \\
+=& \frac{1}{T} \sum_{t=1}^{T} \sum_{-c \leq j \leq c, j \neq 0} \log p\left(w_{t+j} | w_{t}\right)
+\end{aligned}
+$$
+
+
+の最大化を目的としている。ここで、$T$ は学習に用いる単語列 $w_1, w_2, w_3, ..., w_T$ の長さ、$c$ はコンテキストの長さを表している。
+単語 $w_I$ (入力)が与えられたときに、周辺の単語 $w_O$ (出力)が出現する確率を、以下に示すソフトマックス関数でモデル化している。
+
+
+
+
+$$
+\begin{aligned}
+    p(w_O|w_I) = \frac{\exp(\boldsymbol{v}_{w_O}^{\prime\mathrm{T}} \cdot \boldsymbol{v}_{w_I})}{\sum_{w_i \in V} \exp(\boldsymbol{v}_{w_i}^{\prime\mathrm{T}} \cdot \boldsymbol{v}_{w_I})}
+\end{aligned}
+$$
+
+
+
+ここで、$V$はボキャブラリ、$\boldsymbol{v}_{w_I}$ と $\boldsymbol{v}^{\prime}_{w_O}$ はそれぞれ入力の単語ベクトルと出力の単語ベクトルを意味する。
+従って、入力の単語ベクトル $\boldsymbol{v}_{w_I}$ と実際に出現している出力の単語ベクトル $\boldsymbol{v}^{\prime}_{w_O}$ の内積が大きくなるように学習を行う。
+
+
+見ての通り、分母の計算量が膨大なため、次のNegative Samplingと呼ばれる方法が提案されている。
+
+### Negative Sampling
+新たに、ある単語のペア $(w_I, w_O)$ が出現する確率を考え、$p(D=1 | w_I, w_O)$ とする。
+出現しない確率を $p(D=0 | w_I, w_O)$ とし、出現する確率を単語のベクトル同士の内積値を用いたシグモイド関数 $\sigma$ とすると、
+
+
+$$
+\begin{aligned}
+    p(D=1|w_I, w_O) = & \sigma(\boldsymbol{v}_{w_I}^T \cdot \boldsymbol{v}^{\prime}_{w_O})\\
+    p(D=0|w_I, w_O) = & 1 - p(D=1|w_I, w_O)
+\end{aligned}
+$$
+
+
+と表すことができ、新たな目的関数、
+
+
+$$
+\begin{aligned}
+\log \biggl( p(D=1|w_I, w_O) \prod_{w_i \in V}^{} p(D=0|w_I, w_i) \biggr)
+\end{aligned}
+$$
+
+
+の最大化を考える。この時、全てのボキャブラリについて総乗を計算するのが大変なため、
+$k$ 個だけサンプリングした$V_{\rm neg}$を考えると、
+
+
+$$
+\begin{aligned}
+	&  & \log & \biggl( p(D=1|w_I, w_O) \prod_{w_i \in V_{\rm neg}}^{} p(D=0|w_I, w_i) \biggr) \\
+	& = & \log & p(D=1|w_I, w_O) + \sum_{w_i \in V_{\rm neg}}^{} \log p(D=0|w_I, w_i) \\
+	& = & \log & \sigma(\boldsymbol{v}_{w_I}^T \cdot \boldsymbol{v}^{\prime}_{w_O}) + \sum_{w_i \in V_{\rm neg}}^{} \log  \biggl( 1-p(D=1|w_I, w_i) \biggr)\\
+	& = & \log & \sigma(\boldsymbol{v}_{w_I}^T \cdot \boldsymbol{v}^{\prime}_{w_O}) + \sum_{w_i \in V_{\rm neg}}^{} \log  \biggl( 1-\sigma(\boldsymbol{v}_{w_I}^T \cdot \boldsymbol{v}^{\prime}_{w_i}) \biggr) \\
+	& = & \log & \sigma(\boldsymbol{v}_{w_I}^T \cdot \boldsymbol{v}^{\prime}_{w_O}) + \sum_{w_i \in V_{\rm neg}}^{} \log \sigma(-\boldsymbol{v}_{w_I}^T \cdot \boldsymbol{v}^{\prime}_{w_i}) 
+\end{aligned}
+$$
+
+
+もともとの目的関数の分母について、$|V|$ 回の計算が必要であったが、わずか $k$ 回に抑えることができ、計算量が大幅に削減できていることがわかる。$k$ は一般に5から15程度が用いられるらしい。
+
+### 参考
+- Tomas Mikolov, Ilya Sutskever, Kai Chen, Greg S Corrado and Jeff Dean, Distributed Representations of Words and Phrases and their Compositionality, NIPS2013

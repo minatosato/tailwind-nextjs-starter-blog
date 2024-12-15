@@ -1,0 +1,53 @@
+---
+title: "LARSアルゴリズムでLasso解を求める"
+date: 2021-01-17T17:29:00+09:00
+tags: ["machine-learning"]
+draft: false
+---
+
+## はじめに
+[LARSを説明した記事](../../../2021/01/lars-lasso/)のつづきです。
+
+## LARSアルゴリズムとLasso解
+$\hat{\boldsymbol{\beta}}$ をLasso解とすると、非ゼロ要素 $\hat{\beta}_j$ の符号と残差との相関 $\hat{c}_j = \boldsymbol{x}^{\mathsf{T}}\left(\boldsymbol{y} - \hat{\boldsymbol{\mu}}\right)$ との符号は一致している必要がある。
+
+$$
+\text{sign}(\hat{\beta}_j) = \text{sign}(\hat{c}_j) = s_j \ \ \ \ \cdots (*)
+$$
+
+しかし、LARSアルゴリズムは $(*)$ を必ず満たすとは言えない。$\hat{d}_j = s_j w_{\mathcal{A}j}$ とする($\boldsymbol{w}_{\mathcal{A}}$ 等については[前回を参照](../../../2021/01/lars-lasso/))と $\beta_j$ は
+
+$$
+\beta_j^{new} = \hat{\beta}_j + \gamma \hat{d}_j
+$$
+
+で更新されるので、$\beta_j^{new}$ の符号が変わるのは
+
+$$
+\gamma_j = - \frac{\hat{\beta}_j}{\hat{d}_j}
+$$
+
+のタイミングで、最初にそのような変化が起こるのは
+
+$$
+\tilde{\gamma}=\min _{\gamma_{j}>0}\left\{\gamma_{j}\right\}
+$$
+
+が $\hat{\gamma}$ よりも小さくなるとき。このとき、$(*)$ を満たせなくなるのでLARSアルゴリズムの解であってもLasso解ではなくなる。
+
+## 修正版LARS
+もし、$\tilde{\gamma} < \hat{\gamma}$なら、予測値ベクトル等の更新に $\tilde{\gamma}$ を使い、
+
+$$
+\hat{\boldsymbol{\mu}}^{new} = \hat{\boldsymbol{\mu}} + \tilde{\gamma} \boldsymbol{u}_{\mathcal{A}}
+$$
+
+次のステップで説明変数 $\tilde{j}$ を $\mathcal{A}$ から除いてequiangular vectorを計算、各値を更新すれば良い。こうすることでLasso解を求めることがでる。
+
+
+## Pythonによるフルスクラッチ実装
+実装に関しては[前回の実装](../../../2021/01/lars-lasso/#pythonによるフルスクラッチ実装)を少しだけ変更すれば良い。[Github (minatosato/Lasso)](https://github.com/minatosato/Lasso/blob/master/lars_lasso.py)にアップロードしたので参考にしてください。
+
+## 圧倒的参考資料
+- [Lasso-Lars その４ larsアルゴリズムのlasso modification| ぽんのブログ](https://ameblo.jp/p630/entry-11623744219.html)
+

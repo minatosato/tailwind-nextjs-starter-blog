@@ -1,0 +1,167 @@
+---
+title: "Character-Aware Neural Language Models"
+date: 2017-12-11T00:34:00+09:00
+tags: ["machine-learning", "natual-language-processing"]
+draft: false
+---
+
+この記事は[自然言語処理 Advent Calendar 2017](https://qiita.com/advent-calendar/2017/nlp)の11日目の記事になります。
+
+
+[AAAI 2016](https://www.aaai.org/Conferences/AAAI/aaai16.php)で発表された[Character-Aware Neural Language Models](https://arxiv.org/abs/1508.06615)という論文を読んだので紹介します。
+
+# 言語モデル
+### 言語モデルとは
+そもそも言語モデル(language model)とは、ある単語の系列が与えられたときに、**次に来る単語**を予測することをモデリングしているものです。例えばある単語の系列
+
+
+$$
+w_{t-1}, w_{t-2}, \dots
+$$
+
+
+が与えられたときに、単語$w_t$が出現する確率は
+
+
+$$
+P(w_t | w_{t-1}, w_{t-2}, \dots )
+$$
+
+
+と表されます。言語モデルは、この確率$P$について頻出する単語の系列が与えられたときに高くなるように学習します。
+
+### パープレキシティ
+言語モデルの評価には、パープレキシティ(perplexity)が使われることが多いです。
+
+
+$$
+\text{Perplexity} = \exp\left(-\frac{1}{T}\sum_{t=1}^{T} \log P(w_t | w_{1:t-1})\right)
+$$
+
+
+100%単語の出現を予測することができれば$P = 1.0$となり、
+パープレキシティは1.0になります。逆に予測ができなければできないほどパープレキシティは1よりも大きくなります。モデルとデータの量にもよりますが、数十から百強程度が適正範囲かもしれません。
+
+
+
+
+# Character-Aware Neural Language Models
+### 概要
+入力が文字レベルだけの言語モデル作ったよ。出力は相変わらず単語レベルだよ。文字レベルの入力をCNNしてHighwayして出てきた出力をLSTMなRNN-LM(Recurrent neural network language model)に食わせるよ。英語のPenn Treebankにおいては、既存モデルよりパラメータ数60%少ないけど同等の性能だったよ。
+
+
+### モデル
+入力は文字埋め込み(character embeddings)の系列を文書の長さ分だけ用意したテンソル(i.e. shape=(文書の長さ, 単語の長さ, 文字埋め込みの次元数))。各単語ごとにTemporal Conv(i.e. One-dimensional Conv)とTemporal Max-poolingを行い(i.e. shape=(文書の長さ, フィルタ枚数))、Highwayし、最後にLSTMに流し込む(i.e. output shape=(文書の長さ, 単語の語彙サイズ))。
+
+![](/static/images/lstm-char-cnn/model.png)
+
+### 実験結果
+##### English Penn Treebank
+(当時の)state-of-the-artと同等の結果だったよ。訴求点としては、SOTAよりも60%もパラメータ減らしたのに性能が同等だったことを言っている。
+![](/static/images/lstm-char-cnn/result.png)
+
+### 考察
+各クエリについて、学習された単語埋め込み(word embeddings)のコサイン類似度ランキングを作成したのが以下の表。モデルごとに比較している。特筆すべきは、入力が単語レベルの通常のモデル(LSTM-Word)では、語彙データに存在しない(Out-of-Vocabulary)未知語について扱うことができないが、文字レベルの今回のモデルは未知語についても単語埋め込みに落とし込むことができる。現に、未知語であるlooooook(SNSとかには出てきそう？)についてlook、looks、looked、looking等とコサイン類似度が大きかった。面白い。
+![](/static/images/lstm-char-cnn/discussion1.png)
+
+続いては、文字レベルのn-gramの単語埋め込みを主成分分析で2次元に落とし込んで可視化したのが以下の図。
+赤が接頭辞、青が接尾辞、オレンジがハイフン繋ぎの、灰色がその他となっている。
+これを書いている途中でだんだん単語埋め込みという言葉がここでは適切ではない気がしてきた。
+![](/static/images/lstm-char-cnn/discussion2.png)
+
+
+# Kerasによる実装
+### モデル構築
+
+```py
+from keras.layers import Conv2D
+from keras.layers import MaxPooling2D
+from keras.layers import Highway
+from keras.layers import Input
+from keras.layers import Embedding
+from keras.layers import TimeDistributed
+from keras.layers import Dense
+from keras.layers import Dropout
+from keras.layers import Reshape
+from keras.layers import Concatenate
+from keras.layers import LSTM
+from keras.layers import BatchNormalization
+
+from keras.models import Model
+
+def build_lstm_char_cnn(batch_size = 20,
+                        word_length = 10,
+                        sentence_length = 100,
+                        word_vocab_size = 10000,
+                        char_vocab_size = 100,
+                        char_embedding_dim = 128,
+                        lstm_size = 650,
+                        dropout_ratio = 0.5):
+
+    filsters = [50, 100, 150, 200, 200, 200, 200]
+    filster_sizes = [1, 2, 3, 4, 5, 6, 7]
+
+    x = Input(batch_shape=(batch_size, sentence_length, word_length))
+    char_embeddings = TimeDistributed(Embedding(char_vocab_size, char_embedding_dim))(x)
+    output = []
+    for f, f_size in zip(filsters, filster_sizes):
+        h = Conv2D(f, (1, f_size), activation='tanh')(char_embeddings)
+        h = MaxPooling2D(pool_size=(1, word_length-f_size+1))(h)
+        h = Reshape((sentence_length, f))(h)
+        output.append(h)
+    h = Concatenate()(output)
+    h = BatchNormalization()(h)
+    h = TimeDistributed(Highway(activation='relu'))(h)
+    h = TimeDistributed(Highway(activation='relu'))(h)
+    h = LSTM(lstm_size, activation='tanh', recurrent_activation='sigmoid', return_sequences=True)(h)
+    h = LSTM(lstm_size, activation='tanh', recurrent_activation='sigmoid', return_sequences=True)(h)
+    h = Dropout(dropout_ratio)(h)
+    output = TimeDistributed(Dense(word_vocab_size, activation='softmax'))(h)
+    return Model(x, output)
+```
+
+### 実験結果
+パープレキシティの推移は後日載せますが、とりあえず学習した結果得られたword(char sequence) embeddingsについて各クエリに最も近い5語を表示してみました。論文の実験結果に近づいた！
+
+```bash
+----------------
+searching for most similar 5 words to "while" ...
+['where', 'whenever', 'chile', 'wheels', 'when']
+----------------
+searching for most similar 5 words to "his" ...
+['its', 'this', 'hhs', 'eric', 'the']
+----------------
+searching for most similar 5 words to "you" ...
+['boy', 'nobody', 'do', 'we', 'dog']
+----------------
+searching for most similar 5 words to "richard" ...
+['gerard', 'bernard', 'leonard', 'sanford', 'maynard']
+----------------
+searching for most similar 5 words to "trading" ...
+['engaging', 'heading', 'riding', 'reading', 'sliding']
+----------------
+input word does not appear in vocabulary data
+calculating word embedding of "computer-aided" ... done!
+searching for most similar 5 words to "computer-aided" ...
+['computer-guided', 'computerized', 'competitive', 'prosecuted', 'high-priced']
+----------------
+input word does not appear in vocabulary data
+calculating word embedding of "misinformed" ... done!
+searching for most similar 5 words to "misinformed" ...
+['informed', 'performed', 'confirmed', 'emphasized', 'speculated']
+----------------
+input word does not appear in vocabulary data
+calculating word embedding of "looooook" ... done!
+searching for most similar 5 words to "looooook" ...
+['look', 'outlook', 'cook', 'book', 'took']
+----------------
+```
+
+
+### 参考文献
+
+- [ニューラル言語モデルは何を目的としているのか？ 〜 「A Neural Probabilistic Language Model」を途中まで読んだ](http://yamitzky.hatenablog.com/entry/2014/04/26/212344)
+- [深層学習時代の自然言語処理](https://www.slideshare.net/unnonouno/ss-43844132)
+- [これもある意味Deep Learning、Recurrent Neural Network Language Modelの話 [MLAC2013_9日目]](http://kiyukuta.github.io/2013/12/09/mlac2013_day9_recurrent_neural_network_language_model.html)
+- [Cross-Entropy or Log Likelihood in Output layer](https://stats.stackexchange.com/questions/198038/cross-entropy-or-log-likelihood-in-output-layer)
+

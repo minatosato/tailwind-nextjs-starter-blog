@@ -1,0 +1,44 @@
+---
+title: "MathJaxからKaTeXに移行しました"
+date: 2018-07-29T20:44:00+09:00
+tags: ["programming"]
+draft: false
+---
+
+今まで[MathJax](https://www.mathjax.org/)というエンジンを使って$\LaTeX$で記述した数式を表示していましたが、読み込みが遅かったので$\KaTeX$に切り替えました。MathJaxを使っていた理由としては、$\KaTeX$ではgreekを\boldsymbolで記述できなかったからのですが、気がついたら使えるようになっていたので、高速化したいと思って移行しました。  
+
+設定としては、htmlヘッダに
+
+```html
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.10.0-beta/dist/katex.min.css" integrity="sha384-9tPv11A+glH/on/wEu99NVwDPwkMQESOocs/ZGXPoIiLE8MU/qkqUcZ3zzL+6DuH" crossorigin="anonymous">
+<script src="https://cdn.jsdelivr.net/npm/katex@0.10.0-beta/dist/katex.min.js" integrity="sha384-U8Vrjwb8fuHMt6ewaCy8uqeUXv4oitYACKdB0VziCerzt011iQ/0TqlSlv8MReCm" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/katex@0.10.0-beta/dist/contrib/auto-render.min.js" integrity="sha384-aGfk5kvhIq5x1x5YdvCp4upKZYnA8ckafviDpmWEKp4afOZEqOli7gqSnh8I6enH" crossorigin="anonymous"></script>
+<script>$(document).ready(function(){renderMathInElement(document.body,{delimiters: [{left: "$$", right: "$$", display: true},{left: "$", right: "$", display: false}]})});</script>
+```
+
+を追加して本文に
+
+```html
+$$
+f(x) = \frac{1}{\sqrt{2\pi \sigma^2}} \exp \left(-\frac{(x - \mu)^2}
+{2\sigma^2} \right) \hspace{20px} (-\infty < x < \infty)
+$$
+```
+
+と書いてあげれば
+
+
+$$
+f(x) = \frac{1}{\sqrt{2\pi \sigma^2}} \exp \left(-\frac{(x - \mu)^2}
+{2\sigma^2} \right) \hspace{20px} (-\infty < x < \infty)
+$$
+
+といった感じでレンダリングされます。
+文中への挿入も
+
+```html
+このように$y = ax$挿入することもできます。
+```
+
+このように$y = ax$挿入することもできます。

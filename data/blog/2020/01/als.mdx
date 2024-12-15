@@ -1,0 +1,182 @@
+---
+title: "Alternating Least Squares で行列分解"
+date: 2020-01-01T17:21:00+09:00
+tags: ["machine-learning"]
+draft: false
+---
+
+こんにちは、[さとうみなと](https://twitter.com/minatosatou)です。正月早々ですが、推薦関係のコードをGithubで読み漁っていたらSGDではなくAlternating Least Squares (ALS) = 交互最小二乗法で最適化しているものがあり、あまり実装したこともなかったので勉強し直してみました（すっごい今更感）。
+
+
+
+### Notation
+- $\boldsymbol{w}_u \in W$：ユーザー $u$ の潜在ベクトル
+- $\boldsymbol{h}_i \in H$：アイテム $i$ の潜在ベクトル
+- $r_{ui} \in R$：ユーザー $u$ による アイテム $i$ への評価(rating)
+
+### 概要
+（あくまで行列分解の文脈で）ざっくり言うと $W$ と $H$ を同時に最適化するのは複雑すぎるため、$H$ を固定した状態で $W$ を更新、$W$ を固定した状態で $H$ を更新...を繰り返します。単純な線形回帰の最小二乗法の正規方程式のように一回の更新で最適解に落ち着くわけではないですが、繰り返しているうちに最適解に落ち着くのが特徴です。後で更新式を見ていただいたらわかりますが、分散処理がしやすいです。学習率等のハイパーパラメータがないこともメリットの一つです。
+
+### 目的関数と更新式の導出
+
+
+$$
+\min _{W, H} \sum_{u,i}\left(r_{u i}-\boldsymbol{w}_{u}^{\mathsf{T}} \boldsymbol{h}_{i}\right)^{2}+\lambda\left(\sum_{u}\left\|\boldsymbol{w}_{u}\right\|^{2}+\sum_{i}\left\|\boldsymbol{h}_{i}\right\|^{2}\right)
+$$
+
+
+この目的関数についてアイテムの潜在ベクトル $H$ を固定した状態で、$W$ で偏微分し $=0$ とおいて、
+
+
+$$
+\begin{aligned}
+\frac{\partial}{\partial \boldsymbol{w}_u} \left( \sum_{ui} \left(r_{u i}^2- 2r_{u i}\boldsymbol{w}_{u}^{\mathsf{T}} \boldsymbol{h}_{i} + \left( \boldsymbol{w}_{u}^{\mathsf{T}} \boldsymbol{h}_{i}  \right) ^ 2 \right) +\lambda\left(\sum_{u}\left\|\boldsymbol{w}_{u}\right\|^{2}+\sum_{i}\left\|\boldsymbol{h}_{i}\right\|^{2}\right) \right)\\
+= \sum_{i} 
+\left(
+    -2r_{ui} \boldsymbol{h}_{i} + 
+    \left(
+    \begin{array}{c}
+      2h_{i1} \boldsymbol{w}_u^{\mathsf{T}} \boldsymbol{h}_i \\
+      2h_{i2} \boldsymbol{w}_u^{\mathsf{T}} \boldsymbol{h}_i \\
+      \vdots \\
+      2h_{iK} \boldsymbol{w}_u^{\mathsf{T}} \boldsymbol{h}_i
+    \end{array}
+  \right)
+\right) + 2\lambda \boldsymbol{w}_u = 0
+\end{aligned}
+$$
+
+$$
+\sum_{i} 
+    \left(
+    \begin{array}{c}
+      h_{i1} \boldsymbol{h}_i^{\mathsf{T}} \boldsymbol{w}_u \\
+      h_{i2} \boldsymbol{h}_i^{\mathsf{T}} \boldsymbol{w}_u \\
+      \vdots \\
+      h_{iK} \boldsymbol{h}_i^{\mathsf{T}} \boldsymbol{w}_u
+    \end{array}
+  \right) + \lambda \boldsymbol{w}_u
+ = \sum_{i} r_{ui} \boldsymbol{h}_{i}\\
+\left(\sum_{i} \boldsymbol{h}_i \boldsymbol{h}_i^{\mathsf{T}} + \lambda I_K \right) \boldsymbol{w}_u  = \sum_{i} r_{ui} \boldsymbol{h}_{i}\\
+\therefore \boldsymbol{w}_u = \left(\sum_{i} \boldsymbol{h}_i \boldsymbol{h}_i^{\mathsf{T}} + \lambda I_K \right)^{-1} \left( \sum_{i} r_{ui} \boldsymbol{h}_{i} \right)
+$$
+
+同様に
+
+$$
+\boldsymbol{h}_i = \left(\sum_{u} \boldsymbol{w}_u \boldsymbol{w}_u^{\mathsf{T}} + \lambda I_K \right)^{-1} \left( \sum_{u} r_{ui} \boldsymbol{w}_{u} \right)
+$$
+
+を得る。
+
+
+そういえば先日紹介した[ExpoMF](https://minatosato.com/2019/12/expomf/)の各潜在ベクトル更新式は
+
+
+$$
+\begin{aligned}
+&\boldsymbol{\theta}_{u} \leftarrow\left(\lambda_{y} \sum_{i} p_{u i} \boldsymbol{\beta}_{i} \boldsymbol{\beta}_{i}^{\mathsf{T}}+\lambda_{\theta} I_{K}\right)^{-1}\left(\sum_{i} \lambda_{y} p_{u i} y_{u i} \boldsymbol{\beta}_{i}\right)\\
+&\boldsymbol{\beta}_{i} \leftarrow\left(\lambda_{y} \sum_{u} p_{u i} \boldsymbol{\theta}_{u} \boldsymbol{\theta}_{u}^{\mathsf{T}}+\lambda_{\beta} I_{K}\right)^{-1}\left(\sum_{u} \lambda_{y} p_{u i} y_{u i} \boldsymbol{\theta}_{u}\right)
+\end{aligned}
+$$
+
+$$
+\text{where } p_{ui} \text{ is the expectation of exposure.}
+$$
+
+だったので、これからexposureの期待値を除いたものが、ナイーブなALSによる更新式となります。
+
+
+
+### 擬似コード
+01:　input:  rating matrix $R$   
+02:　randomly initialize user factors $\boldsymbol{w}_{1:U}$  
+03:　randomly initialize item factors $\boldsymbol{h}_{1:I}$  
+04:　loop for each iteration  
+05:　　　loop for $u \in \{1,\cdots,U\}$  
+06:　　　　　$\boldsymbol{w}_u = \left(\sum_{i} \boldsymbol{h}_i \boldsymbol{h}_i^{\mathsf{T}} + \lambda I_K \right)^{-1} \left( \sum_{i} r_{ui} \boldsymbol{h}_{i} \right)$  
+07:　　　loop for $i \in \{1,\cdots,I\}$  
+08:　　　　　$\boldsymbol{h}_i = \left(\sum_{u} \boldsymbol{w}_u \boldsymbol{w}_u^{\mathsf{T}} + \lambda I_K \right)^{-1} \left( \sum_{u} r_{ui} \boldsymbol{w}_{u} \right)$  
+
+
+### Pythonコード
+
+```py
+import numpy as np
+from lightfm.datasets import fetch_movielens
+
+dataset = fetch_movielens(min_rating=4.0)
+
+iterations = 3
+K = 20
+lambda_theta = 1e-2
+lambda_beta = 1e-2
+U, I = dataset["train"].shape
+
+
+# 擬似コード01行目
+R = dataset["train"].toarray()
+R[R > 0] = 1.0
+
+# 擬似コード02行目 = ユーザーの潜在ベクトルの初期化
+W = np.random.uniform(low=-0.1, high=0.1, size=(U, K)) / K
+
+# 擬似コード03行目 = アイテムの潜在ベクトルの初期化
+H = np.random.uniform(low=-0.1, high=0.1, size=(I, K)) / K
+
+# 擬似コード04行目 = loop開始
+for iteration in range(iterations):
+    print(f"CURRENT ITERATION = {iteration+1}")
+
+    # 擬似コード05,06行目 = ユーザーの潜在ベクトルの更新
+    for u in range(U):
+        B = np.zeros((K, K))
+        a = np.zeros(K)
+        for i in range(I):
+            B += H[i, None] * H[i, None].T
+            a += R[u, i] * H[i]
+        B += lambda_theta * np.eye(K)
+        W[u] = np.linalg.solve(B, a)
+
+    # 擬似コード07,08行目 = アイテムの潜在ベクトルの更新
+    for i in range(I):
+        B = np.zeros((K, K))
+        a = np.zeros(K)
+        for u in range(U):
+            B += W[u, None] * W[u, None].T
+            a += R[u, i] * W[u]
+        B += lambda_beta * np.eye(K)
+        H[i] = np.linalg.solve(B, a)
+
+
+R_test = dataset["test"].toarray()
+R_test[R_test > 0] = 1.0
+
+from sklearn import metrics
+predicted = W.dot(H.T)
+scores = np.zeros(U)
+for u in range(U):
+    fpr, tpr, thresholds = metrics.roc_curve(R_test[u], predicted[u])
+    scores[u] = metrics.auc(fpr, tpr) if len(set(R_test[u])) != 1 else 0.0
+
+print(f"test mean auc: {scores.mean()}")
+```
+
+僕の実行環境では下記の通りとなり、予想通り[前回のExpoMF](../../2019/12/expomf/)よりも性能が劣る結果となりました。
+
+```
+CURRENT ITERATION = 1
+CURRENT ITERATION = 2
+CURRENT ITERATION = 3
+test mean auc: 0.8723854034443516
+```
+
+
+## さいごに
+今回はALSでの行列分解の学習について簡単に紹介と実装を行ってみました。数式やコード、説明に間違いございましたら[Twitter](https://twitter.com/minatosatou)かコメント欄までお願い致します。
+
+
+### 参考
+- http://stanford.edu/~rezab/classes/cme323/S15/notes/lec14.pdf
+- https://medium.com/radon-dev/als-implicit-collaborative-filtering-5ed653ba39fe
+- https://www.ethanrosenthal.com/2016/10/19/implicit-mf-part-1/

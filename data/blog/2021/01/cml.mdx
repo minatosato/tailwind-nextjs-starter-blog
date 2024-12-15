@@ -1,0 +1,67 @@
+---
+title: "[論文紹介] Collaborative Metric Learning"
+date: 2021-01-01T00:34:00+09:00
+category: "machine-learning"
+draft: true
+---
+
+- 著者：Cheng-Kang Hsieh, Longqi Yang, Yin Cui, Tsung-Yi Lin,  Serge Belongie, Deborah Estrin
+- 所属：UCLA、Cornell Tech
+- 発表会議：WWW 2017
+
+
+
+## 距離学習 (Metric Leanring)
+
+入力空間 $\mathbb{R}^m$ からのサンプルを $\mathcal{X}=\left\{x_{1}, x_{2}, \ldots, x_{n}\right\}$ とする。類似するアイテム同士の集合を
+$$
+\mathcal{S}=\left\{\left(x_{i}, x_{j}\right) | x_{i} \text { and } x_{j} \text { are considered similar }\right\}
+$$
+とし、類似していないアイテム同士の集合を
+$$
+\mathcal{D}=\left\{\left(x_{i}, x_{j}\right) | x_{i} \text { and } x_{j} \text { are considered dissimilar }\right\}
+$$
+とする。多くの問題設定ではアイテム同士の距離をマハラノビス距離
+$$
+d_{A}\left(x_{i}, x_{j}\right)=\sqrt{\left(x_{i}-x_{j}\right)^{T} A\left(x_{i}-x_{j}\right)}
+$$
+で定義している。このとき、距離学習が解きたい凸最適化問題は
+$$
+\begin{aligned}
+&\min _{A} \sum_{\left(x_{i}, x_{j}\right) \in \mathcal{S}} d_{A}\left(x_{i}, x_{j}\right)^{2}\\
+&\text { s.t. } \sum_{\left(x_{i}, x_{j}\right) \in \mathcal{D}} d_{A}\left(x_{i}, x_{j}\right)^{2} \geq 1 \text { and } A \succeq 0
+\end{aligned}
+$$
+となる。
+
+
+
+## Collaborative Metric Learning (提案手法)
+$r$ 次元のユーザー $u$ の潜在ベクトル $u_i$ とアイテム $i$ の潜在ベクトル $v_i$ についてユークリッド距離
+$$
+d(i, j)=\left\|\mathbf{u}_{i}-\mathbf{v}_{j}\right\|
+$$
+を用いて、損失関数を
+$$
+\mathcal{L}_{m}(d)=\sum_{(i, j) \in \mathcal{S}(i, k) \notin \mathcal{S}} w_{i j}\left[m+d(i, j)^{2}-d(i, k)^{2}\right]_{+}
+$$
+と定義する。
+
+ここで $w_{ij}$ はranking loss weight(後述)、$m$ はマージン。
+
+Westonらによって提案されたWeighted Approximate-Rank Pairwise (WARP) loss
+
+アイテム $j$ がユーザー $i$ に対して推薦される順位 $rank_d(i, j)$ を用いて
+$$
+w_{i j}=\log \left(r a n k_{d}(i, j)+1\right)
+$$
+で重み付けを行う。しかし、学習ステップで都度 $rank_d(i, j)$ を計算するのはコストが高すぎるので近似を行う。先行研究においては、損失が非ゼロを取るimposter $k$ が見つかるまでサンプルを続け、そのサンプル回数を $N$ とすると求めたい近似値は $\left\lfloor\frac{J}{N}\right\rfloor$ となる。サンプル時間が増大することを避けるため、 $N$ の上限値として定数 $U=10 \text{ or } 20$ が用いられた。
+
+
+1. $(i, j)$ について $U$ 個のnegative itemsに対してヒンジロスを計算する。
+2. $M$ 個のimposterがあったとき(損失が非ゼロになる個数が $M$ 個だったとき)、$rank_d(i, j)$ の近似値は $\left\lfloor\frac{J \times M}{U}\right\rfloor$ となる。
+
+一見するとこの方法だと毎度 $U$ 回サンプリングを行うのでwastefulな感じがするが、最初の数エポックでpositiveアイテムを高ランクに押し上げるので、先行研究のsequentialな手法を用いても $U$ 回のサンプルが必要なことが経験上わかっているそうです。
+
+共分散の2乗の正則化
+共分散は次元間の線形冗長性の尺度として見ることができるため、この損失は基本的に各次元が冗長になるのを防ぎ、システム全体が特定のスペースをより効率的に利用することを促します。

@@ -1,0 +1,306 @@
+---
+title: "LARS(Least Angle Regression)アルゴリズムの理論と実装"
+date: 2021-01-09T00:15:00+09:00
+tags: ["machine-learning"]
+draft: false
+---
+
+## はじめに
+[以前Lassoを説明した記事](../../../2017/10/lasso/)の中で紹介しきれなかった[Efronらによって提案されたLARS(Least Angle Regression)アルゴリズム](https://web.stanford.edu/~hastie/Papers/LARS/LeastAngle_2002.pdf)を紹介します。LARSアルゴリズムで得られた解とLasso解は厳密には一致しませんが、ほぼ一致しており、さらにLARSアルゴリズムを少し修正するだけでLasso解を計算できます。
+
+
+## LARSアルゴリズム
+### 導入
+はじめに、 $p$ 次元の $n$ 個のデータが与えられた場合に、説明変数 $\boldsymbol{x}$ について基準化を行い
+
+$$
+\sum_{i=1}^{n} x_{i, j} = 0, \ \ \sum_{i=1}^{n} x^2_{i, j} = 1, \ \ \ \ \  j = 1, \cdots, p
+$$
+
+となるように、目的変数 $y$ について中心化を行い
+
+$$
+\sum_{i=1}^n y_{i} = 0
+$$
+
+となるように処理しておく。また、今回求める回帰係数ベクトル $\boldsymbol{\beta} = (\beta_1, \cdots, \beta_p)^{\mathsf{T}}$ とし、非ゼロの添字集合をactive set
+
+$$
+\mathcal{A} = \{j \in \{ 1, \cdots, p \} | \beta_j \neq 0 \}
+$$
+
+とする。
+
+$$
+\begin{aligned}
+S_{\lambda}(\boldsymbol{\beta}) & = ||\boldsymbol{y}-X\boldsymbol{\beta}||^2 + \lambda||\boldsymbol{\beta}||_1 
+\end{aligned}
+$$
+
+について $\beta_j$ で微分すると
+
+$$
+\frac{\partial S_{\lambda}(\boldsymbol{\beta})}{\partial \beta_j}=-2\boldsymbol{x}_{j}^{\mathsf{T}}(\boldsymbol{y}-X\boldsymbol{\beta}) + \lambda\, {\rm sign}(\beta_j)
+$$
+
+となり、これを変形して
+
+$$
+\boldsymbol{x}_j^{\mathsf{T}} (\boldsymbol{y} - X \boldsymbol{\beta}) = \frac{1}{2} \lambda \, {\rm sign}(\beta_j), \quad j\in \mathcal{A} \quad  \cdots (*) 
+$$
+
+となる。式 $(*)$ の意味するところは、 $\mathcal{A}$ のすべての説明変数 $\boldsymbol{x}_j$ と目的変数と予測値の残差( $\boldsymbol{y} - X \boldsymbol{\beta}$ )の内積が等しい=なす角が等しいことを表している。LARSアルゴリズムでは順次残差に対する相関の強い変数を採用して式 $(*)$ を満たすように予測値を移動させる。
+
+
+
+
+簡単な例を出して説明する。 説明変数が $\boldsymbol{x}_1, \boldsymbol{x}_2$ のみの $p=2$ の場合（下図）を考える。
+
+![](../../images/lars/figure2.png)
+quoted from [数理解析研究所講究録 第1908巻](http://www.kurims.kyoto-u.ac.jp/~kyodo/kokyuroku/contents/pdf/1908-05.pdf)
+
+予測値の初期値を $\hat{\boldsymbol{\mu}}_0 = \boldsymbol{0}$ とする。説明変数 $\boldsymbol{x}_1, \boldsymbol{x}_2$ と 残差 $\boldsymbol{y} - \hat{\boldsymbol{\mu}}_0$ の相関係数は $\boldsymbol{x}_1$ の方が大きい。なので予測値を $\boldsymbol{x}_1$ 方向に動かす。LARSでは式 $(*)$ を満たすところまで、即ち、$\hat{\boldsymbol{\mu}}_1$ まで移動させる。次のステップとして残りの説明変数の中で残差との相関係数が最も大きいもの、つまり $\boldsymbol{x}_2$ を加えた $\boldsymbol{x}_1$ と $\boldsymbol{x}_2$ の合成ベクトル方向に移動させるが、このとき式 $(*)$ を満たす $\boldsymbol{u}_2$ 方向に移動させることになる。これを繰り返していくわけだが、アルゴリズムの詳細説明する。
+
+
+### アルゴリズム詳細
+まず、下記の初期化を行う。
+
+- $\boldsymbol{y}$ の予測値の初期化 -> $\hat{\boldsymbol{\mu}} = \boldsymbol{0}$
+- active setの初期化 -> $\mathcal{A} = \emptyset$
+
+次に $\mathcal{A}^c$ にある説明変数(初期状態では $p$ 個ある)のうち、残差 $\boldsymbol{y} - \hat{\boldsymbol{\mu}}$ との相関が大きいものを選択し $\mathcal{A}$ に追加する。つまり、
+
+$$
+\hat{j}=\arg \max _{j}\left|c_{j}\right|, \quad c_{j}=\boldsymbol{x}_{j}^{\mathsf{T}}(\boldsymbol{y}-\hat{\boldsymbol{\mu}}), \quad j \in \mathcal{A}^c
+$$
+
+を満たす $\hat{j}$ を $\mathcal{A}$ に追加する。初期状態では $\hat{j}$ について $\text{sign} (\hat{c}_{\hat{j}}) \boldsymbol{x}_{\hat{j}}$ 方向に動かすことを考えるが、 一般化し、下記の $X_{\mathcal{A}}$ について考える。
+
+$$
+X_{\mathcal{A}}=\left(\cdots s_{j} \boldsymbol{x}_{j} \cdots\right)_{j \in \mathcal{A}}, \quad s_{j} = \text{sign} (\hat{c}_j)
+$$
+
+果たして、これについてどの方向に動かせばよいか。任意の $j \in \mathcal{A}$ について $s_{j} \boldsymbol{x}_{j}$ との内積が $1$ となるベクトル $U$ を考える。
+
+$$
+X_{\mathcal{A}}^{\mathsf{T}} U_{\mathcal{A}} = \boldsymbol{1}_{\mathcal{A}}
+$$
+
+ここで、$\boldsymbol{1}_{\mathcal{A}}$ は長さ $|\mathcal{A}|$ の全要素 $1$ のベクトルである。 $U_{\mathcal{A}} = X_{\mathcal{A}} \boldsymbol{v}$ を導入し、
+
+$$
+X_{\mathcal{A}}^{\mathsf{T}} X_{\mathcal{A}} \boldsymbol{v} = \boldsymbol{1}_{\mathcal{A}}
+$$
+
+即ち
+
+$$
+U_{\mathcal{A}} = X_{\mathcal{A}} \boldsymbol{v} = X_{\mathcal{A}}(X_{\mathcal{A}}^{\mathsf{T}} X_{\mathcal{A}})^{-1}\boldsymbol{1}_{\mathcal{A}}
+$$
+
+が得られる。$U_{\mathcal{A}}$ の単位ベクトル $\boldsymbol{u}_{\mathcal{A}}$ は
+
+$$
+\boldsymbol{u}_{\mathcal{A}} = \frac{U_{\mathcal{A}}}{|U_{\mathcal{A}}|} =A_{\mathcal{A}} X_{\mathcal{A}}\left(X_{\mathcal{A}}^{\mathsf{T}} X_{\mathcal{A}}\right)^{-1} \mathbf{1}_{\mathcal{A}}, \quad A_{\mathcal{A}}=\left(\mathbf{1}_{\mathcal{A}}^{\mathsf{T}}\left(X_{\mathcal{A}}^{\mathsf{T}} X_{\mathcal{A}}\right)^{-1} \mathbf{1}_{\mathcal{A}}\right)^{-1 / 2}
+$$
+
+と求めることができる。これを **equiangular vector** という。従って予測値は $\boldsymbol{u}_{\mathcal{A}}$ 方向に式 $(*)$ を満たすように移動させれば良い。
+
+$$
+\hat{\boldsymbol{\mu}}^{new} = \hat{\boldsymbol{\mu}} + \hat{\gamma} \boldsymbol{u}_{\mathcal{A}}
+$$
+
+このときの $\hat{\gamma}$ を求めたい。注意すべきは次に $\mathcal{A}$ に追加する説明変数についても式 $(*)$ を満たすよう考慮する必要がある点だ。さて、$k$ をステップ数、$j \in \mathcal{A}$ について $\hat{C}_k = \max |\hat{c}_j|$ とすると
+
+$$
+\begin{aligned}
+|c_j| &= |\boldsymbol{x}_j^{\mathsf{T}}\left( \boldsymbol{y} - \boldsymbol{\mu}_{k+1}\right)| 
+\\&=|\boldsymbol{x}_j^{\mathsf{T}}\left( \boldsymbol{y} - \boldsymbol{\mu}_{k} - \gamma \boldsymbol{u}_{\mathcal{A}} \right)|
+\\&= \hat{C} - \gamma \boldsymbol{x}_j^{\mathsf{T}} \boldsymbol{u}_{\mathcal{A}}
+\\&= \hat{C} - \gamma A_{\mathcal{A}}
+\end{aligned}
+$$
+
+となり、これは単調に減少し、新しく $\mathcal{A}$ に追加される説明変数と残差の相関と等しくなる。次に $j \in \mathcal{A}^c$ について
+
+$$
+\begin{aligned}
+c_j &= \boldsymbol{x}_j^{\mathsf{T}}\left( \boldsymbol{y} - \boldsymbol{\mu}_{k+1}\right)
+\\&=\boldsymbol{x}_j^{\mathsf{T}}\left( \boldsymbol{y} - \boldsymbol{\mu}_{k} - \gamma \boldsymbol{u}_{\mathcal{A}} \right)
+\\&=\hat{c}_j - \gamma a_j
+\end{aligned}
+$$
+
+である。よって、$c_j$ が正の値を取る場合
+
+$$
+\hat{C} - \gamma A_{\mathcal{A}} = \hat{c}_j - \gamma a_j\\
+\therefore \gamma =  \frac{\hat{C}-\hat{c}_{j}}{A_{\mathcal{A}}-a_{j}}
+$$
+
+$c_j$ が負の値を取る場合
+
+$$
+\hat{C} - \gamma A_{\mathcal{A}} =  -\hat{c}_j + \gamma a_j\\
+\therefore \gamma =  \frac{\hat{C}+\hat{c}_{j}}{A_{\mathcal{A}}+a_{j}}
+$$
+
+となるが、最小の正の値を取るような $\hat{\gamma}$ を選択し、予測値のベクトルの更新に用いる。ちなみに、同じ条件を満たす説明変数 $\hat{j}$ を次回のステップで $\mathcal{A}$ に追加する
+。
+
+$$
+\hat{\gamma}=\text{min}_{j \in \mathcal{A}^{c}}^{+}\left\{\frac{\hat{C}-\hat{c}_{j}}{A_{\mathcal{A}}-a_{j}}, \frac{\hat{C}+\hat{c}_{j}}{A_{\mathcal{A}}+a_{j}}\right\}
+$$
+
+一方 $\boldsymbol{\beta}$ については
+
+$$
+\boldsymbol{\beta}^{new} = \boldsymbol{\beta} + \hat{\gamma} \boldsymbol{s} \odot \boldsymbol{w}_{\mathcal{A}}
+$$
+
+で更新すればよいが、このとき
+
+$$
+\boldsymbol{w}_{\mathcal{A}} = A_{\mathcal{A}} (X_{\mathcal{A}}^{\mathsf{T}} X_{\mathcal{A}})^{-1}\boldsymbol{1}_{\mathcal{A}}
+$$
+
+である。$\boldsymbol{w}_{\mathcal{A}}$ は $\boldsymbol{u}_{\mathcal{A}}$ の左から $X_{\mathcal{A}}$ の逆行列をかけることで求めることができる。
+
+
+
+### Pythonによるフルスクラッチ実装
+[前回](../../../2017/10/lasso/)も使ったBoston Housing datasetを使う。下記のように `sklearn` でloadができ、予め基準化をしておく。
+
+```py
+from sklearn import datasets
+import pandas as pd
+
+boston_housing = datasets.load_boston()
+X = boston_housing.data
+y = boston_housing.target
+
+X = (X - X.mean(axis=0, keepdims=True)) / X.std(axis=0, keepdims=True)
+y = (y - y.mean()) / y.std()
+```
+
+次に、各変数を初期化しておく。
+
+```py
+import numpy as np
+
+n, p = X.shape # サンプル数、説明変数の数
+
+active_set = [] # active set Aの初期化。便宜上listで作成する。
+inactive_set = list(range(p)) # A^cも同様に作成しておく。
+beta = np.zeros(p) # 回帰係数ベクトルの初期化。
+mu = np.zeros(n) # 予測値のベクトルの初期化。
+```
+
+あとは前のセクションで説明したアルゴリズムに従って逐次的に処理していく。
+
+```py
+for k in range(p):
+    c = np.dot(X.T, y - mu) # 残差との内積値ベクトル
+    if k == 0:
+        j = inactive_set[np.argmax(np.abs(c[inactive_set]))] # A^cの内、cの絶対値の大きい説明変数を選択し、
+    active_set.append(j) # Aに入れる。
+    inactive_set.remove(j) # A^cから除外
+
+    C = np.amax(np.abs(c)) # \hat{C}
+
+    s = np.sign(c[active_set]).reshape((1, len(active_set))) # cの符号ベクトル
+    XA = np.copy(X[:, active_set] * s) # X_Aの計算
+
+    GA = XA.T @ XA
+    GA_inv = np.linalg.inv(GA)
+
+    one = np.ones((len(active_set), 1)) # 1_Aの計算
+    AA = (1. / np.sqrt(one.T @ GA_inv @ one)).flatten()[0] # A_Aの計算
+    
+    w = AA * GA_inv @ one # w_Aの計算
+    u = XA @ w # u_Aの計算
+
+    a = X.T @ u # aの計算
+    d = s.T * w # dの計算
+
+    # \hat{\gamma}の計算
+    if k == p-1:
+        gamma = C / AA
+    else:
+        gamma_candidates = np.zeros((len(inactive_set), 2))
+        for _j, jj in enumerate(inactive_set):
+            gamma_candidates[_j, 0] = (C - c[jj])/(AA - a[jj])
+            gamma_candidates[_j, 1] = (C + c[jj])/(AA + a[jj])
+        gamma = gamma_candidates[gamma_candidates>0].min()
+
+        # 次のステップでactive_setに追加する説明変数。
+        gamma_candidates[gamma_candidates < 0] = gamma_candidates.max()+1
+        j = inactive_set[gamma_candidates.min(axis=1).argmin()]
+
+    mu = mu + gamma * u.flatten() # 予測値のベクトルの更新
+    beta[active_set] = beta[active_set] + gamma * d.flatten() # 回帰係数ベクトルの更新
+
+    print(beta)
+```
+
+各ステップごとに回帰係数ベクトルを出力してみてみると、
+
+```
+[ 0.          0.          0.          0.          0.          0.
+  0.          0.          0.          0.          0.          0.
+ -0.10953828]
+[ 0.          0.          0.          0.          0.          0.18242313
+  0.          0.          0.          0.          0.          0.
+ -0.29196142]
+[ 0.          0.          0.          0.          0.          0.27955224
+  0.          0.          0.          0.         -0.13092412  0.
+ -0.38280426]
+[ 0.          0.          0.          0.          0.          0.29532538
+  0.          0.          0.          0.         -0.14625958  0.0197242
+ -0.38568463]
+[ 0.          0.          0.          0.02811844  0.          0.31375261
+  0.          0.          0.          0.         -0.16336356  0.04445791
+ -0.3907641 ]
+[-0.00568945  0.          0.          0.03852746  0.          0.32114515
+  0.          0.          0.          0.         -0.16895711  0.05235556
+ -0.39054419]
+[-0.01444645  0.          0.          0.04452737  0.          0.32445281
+  0.         -0.02372819  0.          0.         -0.17538134  0.0610197
+ -0.401349  ]
+[-0.02355733  0.          0.          0.0564981  -0.06451967  0.32657144
+  0.         -0.09852623  0.          0.         -0.19051698  0.06713883
+ -0.40282581]
+[-0.03497638  0.03616467  0.          0.06571968 -0.1114055   0.32332925
+  0.         -0.17631288  0.          0.         -0.1928561   0.0722852
+ -0.40445848]
+[-0.03649896  0.0410117  -0.0023548   0.06703404 -0.1166468   0.32267723
+  0.         -0.18732425  0.          0.         -0.19275848  0.07286918
+ -0.40448576]
+[-0.04655845  0.04917665 -0.01001647  0.06966647 -0.1356398   0.31884242
+  0.         -0.2115993   0.02026245  0.         -0.19899308  0.07633467
+ -0.40473952]
+[-0.09958965  0.11571096  0.01467572  0.07414212 -0.22089327  0.29211901
+  0.         -0.33521857  0.28246844 -0.22002355 -0.2234882   0.09209856
+ -0.40669073]
+[-0.10101708  0.1177152   0.0153352   0.07419883 -0.22384803  0.29105647
+  0.00211864 -0.33783635  0.28974905 -0.22603168 -0.22427123  0.09243223
+ -0.40744693]
+```
+
+のようになっており、1つずつ説明変数が選択されていることがわかる。最後に、[重回帰モデルの正規方程式の解](../../../2017/10/ridge/#最小二乗法による推定)も出力すると、
+
+```py
+print(np.linalg.solve(X.T@X, X.T@y))
+"""
+[-0.10101708,  0.1177152 ,  0.0153352 ,  0.07419883, -0.22384803,
+  0.29105647,  0.00211864, -0.33783635,  0.28974905, -0.22603168,
+ -0.22427123,  0.09243223, -0.40744693])
+"""
+```
+
+となり、LARSアルゴリズムですべての説明変数を選択した場合の解と一致していることがわかる。
+
+## 圧倒的参考資料
+- [回帰モデリングと L1 型正則化法の最近の展開](https://www.terrapub.co.jp/journals/jjssj/pdf/3902/39020211.pdf)
+- [Lasso-Lars その１| ぽんのブログ](https://ameblo.jp/p630/entry-11610675456.html)
+- [数理解析研究所講究録 第1908巻](http://www.kurims.kyoto-u.ac.jp/~kyodo/kokyuroku/contents/pdf/1908-05.pdf)

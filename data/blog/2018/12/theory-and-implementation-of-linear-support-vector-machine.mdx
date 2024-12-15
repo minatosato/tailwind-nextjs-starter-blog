@@ -1,0 +1,657 @@
+---
+title: "線形SVMの理論と実装"
+date: 2018-12-07T07:17:00+09:00
+tags: ["machine-learning"]
+draft: false
+---
+
+このエントリは[機械学習の数理 Advent Calendar 2018](https://qiita.com/advent-calendar/2018/aimath)の7日目の記事になります。ハードマージン線形SVMを一部ソルバのちからを借りつつPythonで実装します。
+
+
+# 数学的な準備
+## 超平面について
+$p$次元の分離超平面は、
+
+
+$$
+w_1x_1 + w_2x_2 + \dots + w_px_p + b = 0
+$$
+
+
+という式で表されます。
+ベクトル
+
+
+
+$$
+\begin{aligned}
+\boldsymbol{w} &= (w_1, w_2, \dots, w_p)^{\mathsf{T}}\\
+\boldsymbol{x} &= (x_1, x_2, \dots, x_p)^{\mathsf{T}}
+\end{aligned}
+$$
+
+
+
+を用いて
+
+$$
+\boldsymbol{wx} + b = 0
+$$
+
+と表されます。
+また、超平面を実数倍しても、超平面自体は変わりません。
+
+$$
+r\boldsymbol{wx} + rb = 0
+$$
+
+## 超平面と点の距離
+
+
+高校生の時に、1次関数($w_1x_1 + w_2x_2 + b = 0$)と点$(x_{1}', x_{2}')$の距離の公式を
+
+
+
+
+
+$$
+d = \frac{|w_1x_1' + w_2x_2' + b|}{\sqrt{w_1^2 + w_2^2}}
+$$
+
+
+
+
+と習ったと思います。
+
+
+![](/static/images/svm/dist.png)
+
+これを一般化すると、
+
+
+
+$$
+\begin{aligned}
+d &= \frac{|w_1x_1' + w_2x_2' +, \dots, + w_px_p' + b|}{\sqrt{w_1^2 + w_2^2 + \dots + w_p^2}}\\
+& = \frac{|\boldsymbol{w}^{\mathsf{T}}\boldsymbol{x}' + b|}{||\boldsymbol{w}||}
+\end{aligned}
+$$
+
+
+
+
+となります。
+
+
+## ラグランジュ理論
+
+不等式制約つき最適化問題
+
+$$
+\min_{\boldsymbol{w}, b} f(\boldsymbol{w})\\ \text{subject to}\ g_i(\boldsymbol{w}) \leq 0\ (i=1, \dots, n)
+$$
+
+について
+
+$$
+L(\boldsymbol{w, \alpha}) = f(\boldsymbol{w}) + \sum_{i=1}^n \alpha_ig_i(\boldsymbol{w})
+$$
+
+をラグランジュ関数と定めたとき、次の4つの条件を満たす$\boldsymbol{w}$と$\boldsymbol{\alpha}$を見つける問題に帰着される。
+
+$$
+\begin{aligned}
+(1) & \frac{\partial}{\partial w_j}L(\boldsymbol{w, \alpha}) = \frac{\partial}{\partial w_j}f(\boldsymbol{w}) + \sum_{i=1}^n \alpha_j \frac{\partial}{\partial w_j}g_i(\boldsymbol{w}) = 0\\
+(2) & \frac{\partial}{\partial \alpha_i} L(\boldsymbol{w, \alpha})=g_i(\boldsymbol{w}) \leq 0\\
+
+(3) & \alpha_i \geq 0\\
+(4) & \alpha_ig_i(\boldsymbol{w}) = 0
+\end{aligned}
+$$
+
+これらの条件のことをKKT条件(カルーシュ・クーン・タッカー条件)という。詳細については略。
+
+
+
+# ハードマージン線形SVM
+## 2次計画問題への落し込み
+線形分離可能とは
+
+![](/static/images/svm/linearly_separable.png)
+
+とした時に、
+
+$$
+y_i( \boldsymbol{w}^{\mathsf{T}}\boldsymbol{x}_i + b) > 0\ \ (i=1,\dots,n)
+$$
+
+を満たすことを言う。
+
+![](/static/images/svm/support_vector.png)
+
+この時、超平面から最も近いデータを**サポートベクター**と呼び、そのサポートベクターと超平面の距離$d$を最大化することを考えます。(ここで超平面と点の距離の公式を使います。)
+
+
+
+
+$$
+\begin{aligned}
+\max_{\boldsymbol{w}, b}d\ \ \ \ 
+\text{subject to}\ \  \frac{y_i(\boldsymbol{w}^{\mathsf{T}}\boldsymbol{x}_i + b)}{||\boldsymbol{w}||} \geq d  \ \ (i=1,\dots,n)
+\end{aligned}
+$$
+
+
+
+しかし、最大化問題は難しい...
+そこで、先ほどの制約条件式の両辺を$d$で割って、
+
+
+$$
+\begin{aligned}
+y_i\Biggl(\frac{1}{d||\boldsymbol{w}||}\boldsymbol{w}^{\mathsf{T}}\boldsymbol{x}_i + \frac{1}{d||\boldsymbol{w}||}b\Biggr) \geq 1  \ \ (i=1,\dots,n)
+\end{aligned}
+$$
+
+超平面を実数倍しても超平面自体は変わらないので、スケールを変換して、
+
+
+
+
+$$
+y_i( \boldsymbol{w}'^{T}\boldsymbol{x}'_i + b) \geq 1\ \ (i=1,\dots,n)
+$$
+
+
+
+
+という式が出てきますが、こちらが制約条件式になります。
+この時、サポートベクターについては次式が成り立つ。
+
+
+
+
+$$
+y_i( \boldsymbol{w}'^{T}\boldsymbol{x}'_i + b) = 1
+$$
+
+
+
+
+
+
+$y_i$は$1$or$-1$なので、サポートベクターと超平面の距離$d'$は
+
+
+$$
+\begin{aligned}
+d'  = \frac{|\boldsymbol{w}'^{\mathsf{T}}\boldsymbol{x}' + b|}{||\boldsymbol{w}'||} = \frac{1}{||\boldsymbol{w}'||}
+\end{aligned}
+$$
+
+
+
+
+
+
+となります。
+
+![](/static/images/svm/dist2.png)
+
+以降は$'$を外して説明します。
+距離$d$を最大化するという問題を解きやすくするために逆数の2乗の最小化問題に置き換えます。
+こうすることによって2次計画問題(解が一意に決定する。)に落としこむことができました。
+
+
+
+
+
+
+$$
+\begin{aligned}
+\min_{\boldsymbol{w},b} \frac{1}{2}||\boldsymbol{w}||^2\ \ \ \ 
+\text{subject to}\ \ \ y_i(\boldsymbol{w}^{\mathsf{T}}\boldsymbol{x}_i + b) \geq 1\ \ (i=1,\dots,n)
+\end{aligned}
+$$
+
+
+
+## 主問題から双対問題への落し込み
+この不等式制約つき最適化問題をラグランジュ理論を基に双対問題へ落し込む。制約条件式を変形して、
+
+
+
+
+$$
+\begin{aligned}
+y_i(\boldsymbol{w}^{\mathsf{T}}\boldsymbol{x}_i + b) &\geq 1\ \ (i=1,\dots,n)\\
+-\{y_i(\boldsymbol{w}^{\mathsf{T}}\boldsymbol{x}_i + b) - 1\}&\leq 0\ \ (i=1,\dots,n)
+\end{aligned}
+$$
+
+
+ラグランジュ未定乗数 $\boldsymbol{\alpha}=(\alpha_1, \alpha_2, \dots, \alpha_n)^{\mathsf{T}} \ \ (\alpha_i \geq 0)$を定義すると、ラグランジュ関数は、
+
+
+
+
+$$
+\begin{aligned}
+L(\boldsymbol{w}, b, \boldsymbol{\alpha}) = \frac{1}{2}||\boldsymbol{w}||^2 - \sum_{i=1}^{n}\alpha_i\{y_i(\boldsymbol{w}^{\mathsf{T}}\boldsymbol{x}_i + b) - 1\}
+\end{aligned}
+$$
+
+
+と表され、偏微分すると、
+
+
+
+
+$$
+\begin{aligned}
+\frac{\partial}{\partial b}L(\boldsymbol{w}, b, \boldsymbol{\alpha}) = - \sum_{i=1}^{n}\alpha_iy_i = 0 \leftrightarrow \sum_{i=1}^{n}\alpha_iy_i = 0
+\end{aligned}
+$$
+
+
+$$
+\begin{aligned}
+\frac{\partial}{\partial \boldsymbol{w}}L(\boldsymbol{w}, b, \boldsymbol{\alpha}) = \boldsymbol{w} - \sum_{i=1}^{n}\alpha_iy_ix_i = 0 \leftrightarrow \boldsymbol{w} = \sum_{i=1}^{n}\alpha_iy_ix_i
+\end{aligned}
+$$
+
+
+$\sum_{i=1}^{n}\alpha_iy_i = 0$と$\boldsymbol{w} = \sum_{i=1}^{n}\alpha_iy_ix_i$を$L(\boldsymbol{w}, b, \boldsymbol{\alpha})$に代入して計算すると、
+
+
+$$
+\begin{aligned}
+L_D(\boldsymbol{\alpha}) & = \frac{1}{2}||\boldsymbol{w}||^2 - \sum_{i=1}^n \alpha_i \{ y_i(\boldsymbol{w}^\mathsf{T}\boldsymbol{x}_i+ b) - 1 \} \\
+
+& = \frac{1}{2}\sum_{i=1}^n\alpha_i\alpha_jy_iy_j\boldsymbol{x}_i^\mathsf{T}\boldsymbol{x}_j - \sum_{i=1}^n\{\alpha_iy_i(\boldsymbol{w}^\mathsf{T}\boldsymbol{x}_i+b)-\alpha_i\}\\
+
+& = \frac{1}{2}\sum_{i=1}^n\alpha_i\alpha_jy_iy_j\boldsymbol{x}_i^\mathsf{T}\boldsymbol{x}_j - \sum_{i=1}^n\alpha_iy_i\boldsymbol{w}^\mathsf{T}\boldsymbol{x}_i -b\sum_{i=1}^n\alpha_iy_i + \sum_{i=1}^n\alpha_i\\
+
+& = \sum_{i=1}^{n}\alpha_i - \frac{1}{2}\sum_{i=1}^{n}\sum_{j=1}^{n}\alpha_i\alpha_jy_iy_j\boldsymbol{x}^{\mathsf{T}}_i\boldsymbol{x}_j
+\ \ (\because \sum_{i=1}^n\alpha_iy_i = 0)
+\end{aligned}
+$$
+
+
+
+
+
+となる。
+従って得られた双対問題は、
+
+
+
+
+$$
+\begin{aligned}
+\max_{\boldsymbol{\alpha}} L_D(\boldsymbol{\alpha})\ \ \ \ 
+\text{subject to}\ \ \ \sum_{i=1}^{n}\alpha_iy_i = 0 \ \ \ \alpha_i \geq 0 \ (i=1,\dots,n)
+\end{aligned}
+$$
+
+
+
+これを2次計画問題のソルバーを使って解を得ることを考える。Pythonには`cvxopt`という数理最適化用ライブラリがあるのでこれの中にある`cvxopt.solvers.qp`を用いる。先程得られた双対問題をこれに合わせて変形することを考える。
+
+一般的な凸２次計画問題の最適条件の定式は
+
+
+$$
+\min_{\boldsymbol{\alpha}} \ \frac{1}{2} \boldsymbol{\alpha}^{\mathsf{T}} Q \boldsymbol{\alpha} + \boldsymbol{p\alpha}
+$$
+
+$$
+\begin{aligned}
+\text{subject to} &\  G\boldsymbol{\alpha} \leq \boldsymbol{h} \\
+&\  A\boldsymbol{\alpha} = \boldsymbol{b}
+\end{aligned}
+$$
+
+
+と表される。一方、最適化したい問題は
+
+
+
+$$
+\min_{\boldsymbol{\alpha}} \frac{1}{2} \sum_{i=1}^{n} \sum_{j=1}^{n} \alpha_i\alpha_jy_iy_j\boldsymbol{x}_i^\mathsf{T}\boldsymbol{x}_j - \sum_{i=1}^{n}\alpha_i
+$$
+
+$$
+\begin{aligned}
+\text{subject to} &\ \ \alpha_i \geq 0 \ (i=1,\dots,n) \\
+&\ \ \sum_{i=1}^{n}\alpha_iy_i = 0
+\end{aligned}
+$$
+
+
+なのでこれを式変形して
+
+
+
+$$
+\min_{\boldsymbol{\alpha}}
+\frac{1}{2}(\alpha_1, \alpha_2, \cdots, \alpha_n) \left(
+    \begin{array}{ccc}
+      y_1y_1\boldsymbol{x}_1^\mathsf{T}\boldsymbol{x}_1 & y_1y_2\boldsymbol{x}_1^\mathsf{T}\boldsymbol{x}_2 & \cdots & y_1y_n\boldsymbol{x}_1^\mathsf{T}\boldsymbol{x}_n \\
+      y_2y_1\boldsymbol{x}_2^\mathsf{T}\boldsymbol{x}_1 & y_2y_2\boldsymbol{x}_2^\mathsf{T}\boldsymbol{x}_2 & \cdots & y_2y_n\boldsymbol{x}_2^\mathsf{T}\boldsymbol{x}_n \\
+      \vdots & \vdots & \ddots & \vdots \\
+      y_ny_1\boldsymbol{x}_n^\mathsf{T}\boldsymbol{x}_1 & y_ny_2\boldsymbol{x}_n^\mathsf{T}\boldsymbol{x}_2 & \cdots & y_ny_n\boldsymbol{x}_n^\mathsf{T}\boldsymbol{x}_n
+    \end{array}
+\right)\left(
+    \begin{array}{ccc}
+      \alpha_1\\
+      \alpha_2\\
+      \vdots\\
+      \alpha_n
+    \end{array}
+\right)
++ (-1, -1, \cdots, -1)\left(
+    \begin{array}{ccc}
+      \alpha_1\\
+      \alpha_2\\
+      \vdots\\
+      \alpha_n
+    \end{array}
+\right)\\
+ = \min_{\boldsymbol{\alpha}} \frac{1}{2}\boldsymbol{\alpha}^{\mathsf{T}} \underbrace{ \left(
+    \begin{array}{ccc}
+      y_1y_1\boldsymbol{x}_1^\mathsf{T}\boldsymbol{x}_1 & y_1y_2\boldsymbol{x}_1^\mathsf{T}\boldsymbol{x}_2 & \cdots & y_1y_n\boldsymbol{x}_1^\mathsf{T}\boldsymbol{x}_n \\
+      y_2y_1\boldsymbol{x}_2^\mathsf{T}\boldsymbol{x}_1 & y_2y_2\boldsymbol{x}_2^\mathsf{T}\boldsymbol{x}_2 & \cdots & y_2y_n\boldsymbol{x}_2^\mathsf{T}\boldsymbol{x}_n \\
+      \vdots & \vdots & \ddots & \vdots \\
+      y_ny_1\boldsymbol{x}_n^\mathsf{T}\boldsymbol{x}_1 & y_ny_2\boldsymbol{x}_n^\mathsf{T}\boldsymbol{x}_2 & \cdots & y_ny_n\boldsymbol{x}_n^\mathsf{T}\boldsymbol{x}_n
+    \end{array}
+\right) }_{Q} \boldsymbol{\alpha} + \underbrace{(\boldsymbol{-1})^{\mathsf{T}}}_{\boldsymbol{p}}\boldsymbol{\alpha} \\
+
+$$
+
+
+
+
+$$
+\text{subject to} \ \ \alpha_i \geq 0 \ (i=1,\dots,n) \\
+$$
+
+$$
+\left(
+    \begin{array}{ccc}
+      \alpha_1\\
+      \alpha_2\\
+      \vdots\\
+      \alpha_n
+    \end{array}
+\right) \geq \left(
+    \begin{array}{ccc}
+      0\\
+      0\\
+      \vdots\\
+      0
+    \end{array}
+\right)
+$$
+
+$$
+\begin{aligned}
+\left(
+    \begin{array}{ccc}
+      1 & 0 & \cdots & 0\\
+      0 & 1 & \cdots & 0\\
+      \vdots & \vdots & \ddots & 0\\
+      0 & 0 & \cdots & 1
+    \end{array}
+\right) 
+\left(
+    \begin{array}{ccc}
+      \alpha_1\\
+      \alpha_2\\
+      \vdots\\
+      \alpha_n
+    \end{array}
+\right) 
+& \geq 
+\left(
+    \begin{array}{ccc}
+      0\\
+      0\\
+      \vdots\\
+      0
+    \end{array}
+\right)
+\\
+\therefore
+\underbrace{
+-
+\left(
+    \begin{array}{ccc}
+      1 & 0 & \cdots & 0\\
+      0 & 1 & \cdots & 0\\
+      \vdots & \vdots & \ddots & 0\\
+      0 & 0 & \cdots & 1
+    \end{array}
+\right) 
+}_{G}
+\boldsymbol{\alpha}
+& \leq 
+\underbrace{
+\left(
+    \begin{array}{ccc}
+      0\\
+      0\\
+      \vdots\\
+      0
+    \end{array}
+\right)}_{\boldsymbol{h}}
+
+\end{aligned}
+$$
+また、もう一つの条件式についても
+
+$$
+\sum_{i=1}^{n} \alpha_iy_i = 0
+$$
+
+$$
+(y_1, y_2, \cdots, y_n) 
+\left(
+    \begin{array}{ccc}
+      \alpha_1\\
+      \alpha_2\\
+      \vdots\\
+      \alpha_n
+    \end{array}
+\right) = 0
+$$
+
+$$
+\underbrace{(y_1, y_2, \cdots, y_n)}_{A} \boldsymbol{\alpha} =  \underbrace{0}_{b}
+$$
+
+
+つまるところ、
+
+
+
+$$
+Q = \left(
+    \begin{array}{ccc}
+      y_1y_1\boldsymbol{x}_1^\mathsf{T}\boldsymbol{x}_1 & y_1y_2\boldsymbol{x}_1^\mathsf{T}\boldsymbol{x}_2 & \cdots & y_1y_n\boldsymbol{x}_1^\mathsf{T}\boldsymbol{x}_n \\
+      y_2y_1\boldsymbol{x}_2^\mathsf{T}\boldsymbol{x}_1 & y_2y_2\boldsymbol{x}_2^\mathsf{T}\boldsymbol{x}_2 & \cdots & y_2y_n\boldsymbol{x}_2^\mathsf{T}\boldsymbol{x}_n \\
+      \vdots & \vdots & \ddots & \vdots \\
+      y_ny_1\boldsymbol{x}_n^\mathsf{T}\boldsymbol{x}_1 & y_ny_2\boldsymbol{x}_n^\mathsf{T}\boldsymbol{x}_2 & \cdots & y_ny_n\boldsymbol{x}_n^\mathsf{T}\boldsymbol{x}_n
+    \end{array}
+\right),
+$$
+
+$$
+
+\boldsymbol{p} = (\boldsymbol{-1})^{\mathsf{T}},
+$$
+
+$$
+G = 
+- \left(
+    \begin{array}{ccc}
+      1 & 0 & \cdots & 0\\
+      0 & 1 & \cdots & 0\\
+      \vdots & \vdots & \ddots & 0\\
+      0 & 0 & \cdots & 1
+    \end{array}
+\right),
+$$
+
+$$
+\boldsymbol{h} = 
+\left(
+    \begin{array}{ccc}
+      0\\
+      0\\
+      \vdots\\
+      0
+    \end{array}
+\right),\\
+
+$$
+$$
+
+A = (y_1, y_2, \cdots, y_n),\\
+
+$$
+$$
+
+b = 0.
+$$
+
+
+として2次計画問題を解けば良いことになる。ただし、このとき$A$は$1$行$n$列の行列として扱う。
+
+これにより得られた解$\boldsymbol{\alpha} = (\alpha_1, \alpha_2, \cdots, \alpha_n)$とすると、4番目のKKT条件から
+
+
+$$
+\alpha_ig_i(\boldsymbol{w}) = 0
+$$
+
+$$
+\alpha_i \left(y_i(\boldsymbol{w}^\mathsf{T}\boldsymbol{x}_i + b) - 1\right) = 0
+$$
+
+
+を満たすことになるが、サポートベクターについては$\boldsymbol{w}^\mathsf{T}\boldsymbol{x}_i + b = 1\ \text{or}\ -1$となるため、$\alpha_i$がどのような値であっても条件を満たすが、それ以外については$y_i(\boldsymbol{w}^\mathsf{T}\boldsymbol{x}_i + b)-1$が$0$にならないため、必然的に$\alpha_i$が0になる必要がある。このため、$\boldsymbol{w}$を求めるには非ゼロの$\alpha_i$についてのみ考えれば良く、
+
+
+
+$$
+\boldsymbol{w} = \sum_{i \in S}\alpha_iy_i\boldsymbol{x}_i\\
+\text{where\ }S \text{ is the set of indices of support vectors.}
+$$
+
+
+と求めることができる。一方バイアス$b$について考える。サポートベクターについては、
+
+
+$$
+y_i\left(\boldsymbol{w}^{\mathsf{T}}\boldsymbol{x}_i + b\right) = 1
+$$
+
+が成り立つので、正例のサポートベクターを$x_+$、負例のサポートベクターを$x_-$とすると、
+
+$$
+\boldsymbol{w}^{\mathsf{T}}\boldsymbol{x}_+ + b = 1\\
+\boldsymbol{w}^{\mathsf{T}}\boldsymbol{x}_- + b = -1\\
+\leftrightarrow \boldsymbol{w}^{\mathsf{T}}\boldsymbol{x}_+ + \boldsymbol{w}^{\mathsf{T}}\boldsymbol{x}_- + 2b = 0\\
+\leftrightarrow b = -\frac{1}{2}(\boldsymbol{w^\mathsf{T}x_+} + \boldsymbol{w^\mathsf{T}x_-})
+$$
+
+Pythonで実装すると
+
+```python
+import numpy as np
+import cvxopt
+import matplotlib.pyplot as plt
+import sklearn.datasets
+from typing import List
+
+N = 100
+positive: List[np.ndarray] = []
+negative: List[np.ndarray] = []
+
+mean1 = [-2, 2]
+mean2 = [2, -2]
+cov = [[1.0, 0.3], [0.3, 1.0]]
+    
+positive.extend(np.random.multivariate_normal(mean1, cov, N//2))
+negative.extend(np.random.multivariate_normal(mean2, cov, N//2))
+    
+X = np.vstack((positive, negative))
+    
+y = []
+for i in range(N//2):
+    y.append(1.0)   # 正例 y_i = 1
+for i in range(N//2):
+    y.append(-1.0)  # 負例 y_i = -1
+y = np.array(y)
+
+
+_Q = np.zeros((N, N))
+for i in range(N):
+    for j in range(N):
+        _Q[i, j] = y[i]*y[j]*np.dot(X[i], X[j])
+Q = cvxopt.matrix(_Q)
+p = cvxopt.matrix(-np.ones(N))
+G = cvxopt.matrix(-np.eye(N))
+h = cvxopt.matrix(np.zeros(N))
+A = cvxopt.matrix(y[np.newaxis], (1, N), 'd')
+b = cvxopt.matrix(0.0)
+solution = cvxopt.solvers.qp(Q, p, G, h, A, b)
+
+alpha = np.array(solution['x']).flatten()
+
+top2_sv_indices = alpha.argsort()[-2:]
+sv_indices = alpha > 1e-6
+W = np.dot(alpha[sv_indices] * y[sv_indices], X[sv_indices])
+bias = - np.dot(X[top2_sv_indices], W).mean()
+
+xs = np.array([X.min(), X.max()])
+ys = np.array([(-W[0]*xs[0]-bias)/W[1], (-W[0]*xs[1]-bias)/W[1]])
+
+
+plt.scatter(X[:, 0][y == 1], X[:, 1][y == 1], label="positive")
+plt.scatter(X[:, 0][y == -1], X[:, 1][y == -1], label="negative")
+for coordinate in X[sv_indices]:
+    plt.annotate('sv', coordinate)
+plt.plot(xs, ys)
+plt.legend()
+plt.grid()
+plt.show()
+```
+
+実行した出力
+
+```
+     pcost       dcost       gap    pres   dres
+ 0: -7.4843e+00 -1.2390e+01  3e+02  2e+01  2e+00
+ 1: -4.4900e+00 -1.3805e+00  3e+01  2e+00  2e-01
+ 2: -1.0676e-01 -4.8913e-01  8e-01  2e-02  2e-03
+ 3: -1.8470e-01 -2.8934e-01  1e-01  3e-03  3e-04
+ 4: -2.4603e-01 -2.7739e-01  3e-02  6e-05  6e-06
+ 5: -2.6911e-01 -2.7311e-01  4e-03  6e-06  7e-07
+ 6: -2.7247e-01 -2.7268e-01  2e-04  2e-07  2e-08
+ 7: -2.7266e-01 -2.7266e-01  2e-06  2e-09  2e-10
+ 8: -2.7266e-01 -2.7266e-01  2e-08  2e-11  2e-12
+ Optimal solution found.
+```
+
+![](/static/images/hard_svm.png)
+
+## おわりに
+今回は完全に線形分離可能な問題下におけるハードマージン線形SVMについて扱いました。線形分離可能でない場合については、今回解いた2次計画問題の設定では解にたどり着けないのでスラック変数というのを導入するのですが、それに関してはまた次回以降。
+
+## 参考
+
+- http://www.me.titech.ac.jp/~mizu_lab/text/PDF-NLP/NLP1-QP-problem.pdf
+- http://www2.kaiyodai.ac.jp/~takenawa/optimization/resume10-2.pdf
+- [線形SVM - 人工知能に関する断創録](http://aidiary.hatenablog.com/entry/20100501/1272712699)

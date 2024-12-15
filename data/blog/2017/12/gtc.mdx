@@ -1,0 +1,36 @@
+---
+title: "GTC Japan 2017 深層学習フレームワークメモ"
+date: 2017-12-14T23:33:00+09:00
+tags: ["misc"]
+draft: false
+---
+# GTC Japan 2017
+先日[GTC Japan 2017](https://www.gputechconf.jp/)というカンファレンスに参加してきたので、深層学習フレームワークについて動向を殴り書きでメモ。
+
+![](/static/images/tf.JPG)
+
+トレンドとしては、
+
+- **Eager execution (define-by-run)**
+    - トレンドというか2015年にChainerが登場して以降普及し始めた。
+    - [TensorFlowにeager execution追加。](https://research.googleblog.com/2017/10/eager-execution-imperative-define-by.html)
+        - まだcontribだけど。
+    - 言わずもがな[PyTorch](http://pytorch.org/)、Gluon。
+    - SonyのNNablaはdefine-by-runとdefine-and-runの両方に対応。
+    - Facebookは研究にdefine-by-runである[PyTorch](http://pytorch.org/)を、
+    - デプロイにはdefine-and-runである[Caffe2](https://caffe2.ai/)を使っている。
+        - やっぱりデバッグしやすいのでdefine-by-runは研究向き？
+
+- **モバイル向け最適化**
+    - TFLiteやCaffe2等。
+
+- **分散処理**
+    - 大量のGPUを使っても性能が線形にスケールすることを各社アピール。
+
+- [**ONNX**](https://onnx.ai/)
+    - Open Neural Network Exchange
+    - ニューラルネットワークのモデルの標準化を行い、ONNXを介すことによって様々なフレームワーク間で容易にモデルを変換できるようになる。
+    - RNNとかはまだ？
+    - Caffe2、Gluon、Chainer等対応。
+
+なんか抜けている気がするので書き足すかも。

@@ -1,0 +1,310 @@
+---
+title: "GloVe: Global Vectors for Word Representation 読んだ"
+date: 2019-01-27T18:08:00+09:00
+tags: ["machine-learning", "natual-language-processing"]
+draft: false
+---
+
+## 論文について
+### タイトル
+[GloVe: Global Vectors for Word Representation](https://www.aclweb.org/anthology/D14-1162)
+
+### 著者
+Jeffrey Pennington, Richard Socher, Christopher D. Manning
+
+### 所属
+Stanford NLP
+
+## 3行まとめ
+"global matrix factorization methods"と"local context window methods"のいいとこ取りをしていい感じのword embeddingを獲得する手法を提案するよ。GloVeは単語-単語のスパースな共起行列全体や超巨大なコーパス上の個々のlocal context windowを使うことなく、共起行列の非ゼロな要素だけを使って効率的に学習できるよ。
+
+補足：前者の"global matrix factorization"はいわゆるカウントベースの手法で、単語-単語の共起行列をmatrxi factorizeするモデルで、後者の"local contet windows methods"というのは対象語(target)を周辺語(local context)から予測するというモデル(e.g. CBOWやその他言語モデル)である。
+
+## 関連研究
+1. global matrix factorization methods
+   - このような手法は、統計情報を効率的に活用しているが、アナロジータスクに弱い。
+   - LSA、HAL
+     - 最も出現回数の高い語は不均衡な影響を与える。
+   - [COALS [Rohde et al.,
+2006]](https://pdfs.semanticscholar.org/73e6/351a8fb61afc810a8bb3feaa44c41e5c5d7b.pdf)
+     - ↑の問題に対応するためにエントロピーあるいは相関に基づくnormalizationにより共起行列の変換を行っている。
+   - positive pointwise mutual information (PPMI)に基づく変換
+   - [Hellinger PCA (HPCA) [Lebret and
+Collobert, 2014]](https://arxiv.org/abs/1312.5542)
+     - 平方根型の変換
+2. local context window methods
+   - Skip-gram、CBOW
+     - このような手法は、アナロジータスクに強いが、統計情報は（コーパス全体の共起行列ではなくlocalなcontext windowを使っているため）活用できていない。
+
+## 手法
+まず、単語-単語の共起のカウントを格納した行列(共起行列)を$X$と表す。このとき、
+
+
+
+$$
+X_{ij}
+$$
+
+
+
+とは、文脈語$i$の文脈で単語$j$の出現回数を表す。さらに、
+
+
+
+$$
+X_i = \sum_{k} X_{ik}
+$$
+
+
+
+は$i$が文脈語として出現した合計回数になる。また、
+
+
+
+
+$$
+P_{ij} = P(j | i) = \frac{X_{ij}}{X_i}
+$$
+
+
+
+は単語$j$が文脈語$i$の文脈で出現する確率とする。
+
+![](/static/images/glove/table1.png)
+
+
+
+
+熱力学を考えたときに$i=\text{ice}$で$j=\text{steam}$で考えてみる。
+
+$k=\text{solid}$のとき、solidはsteamではなく、iceに関連があるため$\frac{P_{ik}}{P_{jk}}$の値は大きくなると考えられる。  
+逆に$k=\text{gas}$のとき、gasはiceではなく、steamに関連があるため$\frac{P_{ik}}{P_{jk}}$の値は小さくなると考えられる。  
+$k = \text{water or fashion}$のときは、$k$はiceとsteamの両方に関係しているか、どちらにも関係していないので、$\frac{P_{ik}}{P_{jk}}$の値は1に近づくはず。
+
+
+
+上記の議論は、単語ベクトル学習のための適切な出発点は、確率それ自体よりもむしろ共起確率の比率にあるべきであることを示唆している。これを定式化すると、
+
+
+
+$$
+F \left( w _ { i } , w _ { j } , \tilde { w } _ { k } \right) = \frac { P _ { i k } } { P _ { j k } } ~ ~ ~ ~ ~ ~ ~ (1)
+$$
+
+
+
+
+
+ここで、$w \in \mathbb{R}^d$は単語ベクトル、$\tilde{w} \in \mathbb{R}^d$は文脈単語ベクトルである。  
+最初に、単語ベクトル空間において$\frac{P_{ik}}{P_{jk}}$を表す情報に変換する$F$を考える。ベクトル空間は線形構造なので、ベクトルの差を使って
+
+
+$$
+F \left( w _ { i } - w _ { j } , \tilde { w } _ { k } \right) = \frac { P _ { i k } } { P _ { j k } }. ~ ~ ~ ~ ~ ~ ~ (2)
+$$
+
+
+
+左辺の引数はベクトル、右辺はスカラである。
+$F$は、例えばニューラルネットワークによってパラメータ化された複雑な関数であると見なすことができるが、そうしてしまうと前提にある線形構造をobfuscateしてしまうので、$F$の引数同士のdot productとしてしてあげると、
+
+$$
+F \left( \left(w _ { i } - w _ { j }\right)^{\mathrm{T}}\tilde { w } _ { k } \right) = \frac { P _ { i k } } { P _ { j k } }. ~ ~ ~ ~ ~ ~ ~ (3)
+$$
+
+次に、単語-単語の共起行列の場合、単語と文脈語の区別は任意であり、2つの役割を自由に交換できます。つまり、$w \leftrightarrow \tilde { w }$だけでなく、$X \leftrightarrow X ^ { T }$も交換可能でないといけないが、$(3)$は満たしていない。
+
+まずはじめに、$F$について$( \mathbb { R } , + )$と$\left( \mathbb { R } _ { > 0 } , \times \right)$の間で準同型(homomorphism)を仮定すると、
+
+$$
+F \left( \left( w _ { i } - w _ { j } \right) ^ { T } \tilde { w } _ { k } \right) = \frac { F \left( w _ { i } ^ { T } \tilde { w } _ { k } \right) } { F \left( w _ { j } ^ { T } \tilde { w } _ { k } \right) }. ~ ~ ~ ~ ~ ~ ~ (4)
+$$
+
+補足：$F$について加法群$(\mathbb{R, +})$から乗法群$\left( \mathbb { R } _ { > 0 } , \times \right)$への準同型であるとは、
+
+$$
+F(a+b) = F(a)F(b)
+$$
+
+を満たすことを言う。
+
+$(3)(4)$より、
+
+$$
+F \left( w _ { i } ^ { T } \tilde { w } _ { k } \right) = P _ { i k } = \frac { X _ { i k } } { X _ { i } }. ~ ~ ~ ~ ~ ~ ~ (5)
+$$
+
+$F = \exp$とおくと、
+
+$$
+w _ { i } ^ { T } \tilde { w } _ { k } = \log \left( P _ { i k } \right) = \log \left( X _ { i k } \right) - \log \left( X _ { i } \right) . ~ ~ ~ ~ ~ ~ ~ (6)
+$$
+
+$(6)$の$\log \left( X _ { i } \right)$がなければ、交換対称性があるのに。。。。 
+
+補足：$w \leftrightarrow \tilde { w }$、$X \leftrightarrow X ^ { T }$としたときに(6)は
+
+$$
+\tilde{w} _ { i } ^ { T } w _ { k } = \log \left( X ^ {\mathrm{T}} _ { i k } \right) - \log \left( X ^ {\mathrm{T}} _ { i } \right) ~ ~ ~ ~ ~ ~ ~ (\ast)
+$$
+
+となる。一方$i\leftrightarrow k$としたときに、
+
+$$
+ w _ { k } \tilde{w} _ { i } ^ { T } = \log \left( X  _ { ki } \right) - \log \left( X  _ { k } \right)
+$$
+
+$$
+\Leftrightarrow  \tilde{w} _ { i } ^ { T } w _ { k } = \log \left( X ^ {\mathrm{T}} _ { i k } \right) - \log \left( X  _ { k } \right) ~ ~ ~ ~ ~ ~ ~ (\ast \ast)
+$$
+
+となり、$(\ast)$と$(\ast \ast)$を比較したときに矛盾する。($\because \log \left(X_i^\mathrm{T} \right) \neq \log \left(X_k \right)$)
+
+そこで、$(6)$について、この項は$k$とは関係がないので($w_i$に対する)バイアス$b_i$で置き換えることを考え、さらに($\tilde{w}_k$に対する)バイアス$\tilde{b}_k$を付け加えることで、対称性を持った
+
+$$
+w _ { i } ^ { T } \tilde { w } _ { k } + b _ { i } + \tilde { b } _ { k } = \log \left( X _ { i k } \right) 
+$$
+
+を得る。これの2乗誤差に重み関数$f$で重み付けを行ったものを損失関数とする。
+
+$$
+J = \sum _ { i , j = 1 } ^ { V } f \left( X _ { i j } \right) \left( w _ { i } ^ { T } \tilde { w } _ { j } + b _ { i } + \tilde { b } _ { j } - \log X _ { i j } \right) ^ { 2 }
+$$
+
+ここで$V$は語彙数、重み関数$f$は
+
+
+
+$$
+f ( x ) = \left\{ \begin{array} { c c } { \left( x / x _ { \max } \right) ^ { \alpha } } & { \text { if } x < x _ { \max } } \\ { 1 } & { \text { otherwise } } \end{array} \right.
+$$
+
+
+![](/static/images/glove/f.png)
+
+$x _ { \max }$は$100$、$\alpha$は$3/4$のときに良い結果が得られた。negative samplingのときと同じ値だ。。。
+$f(0) = 0$なのでそもそも$X$の非ゼロな要素だけ見れば良いので嬉しい。(語彙やコーパスサイズにもよるが、$X$の75–95%はゼロな要素らしい。。。)
+
+
+
+## 実験
+### タスク
+- Word analogies
+  - $a$ is to $b$ as $c$ is to ___ ?
+  - $w _ { b } - w _ { a } + w _ { c }$にコサイン類似が近い語を探してくるタスク。
+    - 意味的なタスク  
+      e.g. Athens is to Greece as Berlin is to ______ ?
+    - 文法的なタスク  
+      e.g. dance is to dancing as fly is to ______ ?
+
+- Word similarity
+  - データセット
+    - WordSim-353
+    - MC
+    - RG
+    - SCWS
+    - RW
+- Named entity recognition (NER)
+  - 単語ベクトルを入力とし、CRF(Conditional Random Fields)で学習する。
+  - 訓練データセット
+    - CoNLL-2003 training data
+  - テストデータセット
+    - ConLL-03 testing data
+    - ACE Phase2 (2001-02)
+    - MUC7 Formal Run test set
+
+### 学習につかったコーパス
+1. 2010 Wikipedia dump with 1 billion tokens
+2. 2014 Wikipedia dump with 1.6 billion tokens
+3. Gigaword 5 which has 4.3 billion tokens
+4. 2と3の足し合わせ 6 billion tokens
+5. 42 billion tokens of web data, from Common Crawl
+
+Stanford tokenizerでトークナイズ、 最頻出の40万語を語彙として使用。  
+※5.については200万語を語彙として使用。
+
+### 比較手法
+- Skip-gram
+- CBOW
+- SVD (最頻出の1万語のみで共起行列$X_{\text{trunc}}$を作る)
+  - SVD-S($\sqrt{X_{\text{trunc}}}$)
+  - SVD-L($\log \left(1+X_{\text{trunc}}\right)$)
+
+### 結果
+- Word analogies  
+  概して、GloVeが良かった。特に、42Bものバカでかいコーパスでも簡単に学習することができた。SVD-Lはコーパスサイズが大きくなると逆に精度が悪くなったが、GloVeは良くなった。(GloVeは重み関数$f$が効いている？)
+
+![](/static/images/glove/table2.png)
+
+
+- Word similarity  
+  概してGloVeが良い。SVD-Lとの比較は先程と同じだが、より大きいコーパスで学習したCBOWよりもGloVeの方が良かった。
+
+![](/static/images/glove/table3.png)
+
+
+- NER  
+  概してGloVeが良い。SVD-Lとの比較は先程と同じだが、より大きいコーパスで学習したCBOWよりもGloVeの方が良かった。
+
+![](/static/images/glove/table4.png)
+
+
+## 考察
+### Embeddingの次元と文脈の長さについて
+- (ａ) だいたい200次元くらいでaccuracyが頭打ちになる。
+- (ｂ)(ｃ) Syntacticについては語順に強く依存するためAsynmmetric context(contextが注目語の左のみ)の方が良く、window sizeを大きくすると悪化する。Semanticについてはlocalではなく、window sizeが大きければ大きいほどよい結果となった。
+
+![](/static/images/glove/figure2.png)
+
+### コーパスサイズについて
+Syntacticについてはコーパスのサイズが大きければ大きいほど良い傾向にあるが、Semnticについては必ずしもその限りではなく、コーパスの性質によって変わってくる。例えばアナロジータスクでは地名に関する設問があったが、Wiki2014の方ではそれをカバーできてきたと考えれる。
+
+![](/static/images/glove/figure3.png)
+
+
+### 学習時間について
+40万語彙、60億語のコーパスでWindow size = 10で共起行列$X$をつくるのに85分かかったらしい。学習には32コアすべてを使って1イテレーション14分しかかからなかった。(Figure 4参照)
+
+### Skip-gram、CBOWとの比較
+単純な比較はパラメータが多すぎるのでむずかしい。学習時間で比較したい。GloVeの学習時間がiterationで表されるのに対し、Skip-gram、CBOWはepochである。しかし、残念ながら現状の(Skip-gram、CBOWの)コードがsingle epochしか学習しないように実装されているため、ひとまずnegative samplingの個数が訓練に使いデータ量に関連があるので、これと比較する。CBOWに至ってはnegative samplingの個数を増やすとかえって精度が悪くなった。これは、negative samplingが対象となる確率分布をうまく近似できていないからなのかも知れない。
+
+![](/static/images/glove/figure4.png)
+
+
+## NNablaでの実装
+```py
+import nnabla as nn
+import nnabla.functions as F
+import nnabla.parametric_functions as PF
+
+x_central = nn.Variable((batch_size, ))
+x_context = nn.Variable((batch_size, ))
+
+with nn.parameter_scope('central_embedding'):
+    central_embedding = PF.embed(x_central, vocab_size, embedding_size)
+with nn.parameter_scope('context_embedding'):
+    context_embedding = PF.embed(x_context, vocab_size, embedding_size)
+
+with nn.parameter_scope('central_bias'):
+    central_bias = PF.embed(x_central, vocab_size, 1)
+with nn.parameter_scope('context_bias'):
+    context_bias = PF.embed(x_context, vocab_size, 1)
+
+dot_product = F.reshape(
+    F.batch_matmul(
+        F.reshape(central_embedding, shape=(batch_size, 1, embedding_size)),
+        F.reshape(context_embedding, shape=(batch_size, embedding_size, 1))
+    ),
+    shape=(batch_size, 1)
+)
+
+prediction = dot_product + central_bias + context_bias
+
+t = nn.Variable((batch_size, 1))
+zero = F.constant(0, shape=(batch_size, 1))
+one = F.constant(1, shape=(batch_size, 1))
+weight = F.clip_by_value(t / 100, zero, one) ** 0.75
+loss = F.sum(weight * ((prediction - F.log(t+1)) ** 2))
+
+```

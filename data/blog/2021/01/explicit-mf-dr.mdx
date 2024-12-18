@@ -135,12 +135,12 @@ where
 
 学習アルゴリズムは上記のモデルを交互に学習する方法を採用。詳細は下記を参照。
 
-![](../../images/implicit-mf-dr/joint-learning-algorithm.png)
+![](/static/images/implicit-mf-dr/joint-learning-algorithm.png)
 
 ## 実験
-MARとMNARの両方で収集したデータを含むCOAT[Schnabel et al., 2016]とYAHOO[Marlin & Zemel, 2009]で検証。[前回](../../../2020/05/explicit-mf-ips/#ナイーブベイズを用いたpropensityの推定)同様Propensityの推定にMARなデータ、つまりテストデータを使っている。。。  
+MARとMNARの両方で収集したデータを含むCOAT[Schnabel et al., 2016]とYAHOO[Marlin & Zemel, 2009]で検証。[前回](/static/../blog/2020/05/explicit-mf-ips/#ナイーブベイズを用いたpropensityの推定)同様Propensityの推定にMARなデータ、つまりテストデータを使っている。。。  
 結果は下記の通りで、先行研究のMF-IPSよりも良くなっていることを示している。
-![](../../images/implicit-mf-dr/table2.png)
+![](/static/images/implicit-mf-dr/table2.png)
 
 ## おわりに
 一旦上記の実験結果を再現できるか実装していますが、残念ながら現時点で再現できていないです。。。再現できたらその段階で公開したいです。

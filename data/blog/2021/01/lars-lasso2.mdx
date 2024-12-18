@@ -6,7 +6,7 @@ draft: false
 ---
 
 ## はじめに
-[LARSを説明した記事](../../../2021/01/lars-lasso/)のつづきです。
+[LARSを説明した記事](lars-lasso)のつづきです。
 
 ## LARSアルゴリズムとLasso解
 $\hat{\boldsymbol{\beta}}$ をLasso解とすると、非ゼロ要素 $\hat{\beta}_j$ の符号と残差との相関 $\hat{c}_j = \boldsymbol{x}^{\mathsf{T}}\left(\boldsymbol{y} - \hat{\boldsymbol{\mu}}\right)$ との符号は一致している必要がある。
@@ -15,7 +15,7 @@ $$
 \text{sign}(\hat{\beta}_j) = \text{sign}(\hat{c}_j) = s_j \ \ \ \ \cdots (*)
 $$
 
-しかし、LARSアルゴリズムは $(*)$ を必ず満たすとは言えない。$\hat{d}_j = s_j w_{\mathcal{A}j}$ とする($\boldsymbol{w}_{\mathcal{A}}$ 等については[前回を参照](../../../2021/01/lars-lasso/))と $\beta_j$ は
+しかし、LARSアルゴリズムは $(*)$ を必ず満たすとは言えない。$\hat{d}_j = s_j w_{\mathcal{A}j}$ とする($\boldsymbol{w}_{\mathcal{A}}$ 等については[前回を参照](lars-lasso))と $\beta_j$ は
 
 $$
 \beta_j^{new} = \hat{\beta}_j + \gamma \hat{d}_j
@@ -46,7 +46,7 @@ $$
 
 
 ## Pythonによるフルスクラッチ実装
-実装に関しては[前回の実装](../../../2021/01/lars-lasso/#pythonによるフルスクラッチ実装)を少しだけ変更すれば良い。[Github (minatosato/Lasso)](https://github.com/minatosato/Lasso/blob/master/lars_lasso.py)にアップロードしたので参考にしてください。
+実装に関しては[前回の実装](lars-lasso/#pythonによるフルスクラッチ実装)を少しだけ変更すれば良い。[Github (minatosato/Lasso)](https://github.com/minatosato/Lasso/blob/master/lars_lasso.py)にアップロードしたので参考にしてください。
 
 ## 圧倒的参考資料
 - [Lasso-Lars その４ larsアルゴリズムのlasso modification| ぽんのブログ](https://ameblo.jp/p630/entry-11623744219.html)

@@ -1,14 +1,14 @@
 ---
 title: "Encoder-decoderモデルとTeacher Forcing、Scheduled Sampling、Professor Forcing"
 date: 2018-02-12T16:18:00+09:00
-tags: ["machine-learning"]
+tags: ["machine-learning", "deep-learning"]
 draft: false
 ---
 
 
 Encoder-decoderモデルとTeacher Forcing、それを拡張したScheduled Sampling、Professor Forcingについて簡単に書きました。
 
-# 概要
+## 概要
 Encoder-decoderモデルは、ソース系列をEncoderと呼ばれるLSTMを用いて固定長のベクトルに変換(Encode)し、Decoderと呼ばれる別のLSTMを用いてターゲット系列に近くなるように系列を生成するモデルです。もちろん、LSTMでなくてGRUでもいいです。機械翻訳のほか、文書要約や対話生成にも使われます。
 
 
@@ -18,7 +18,7 @@ Encoder-decoderモデルは、ソース系列をEncoderと呼ばれるLSTMを用
 
 
 
-# Encoder
+## Encoder
 ソース系列$X = (x_1, x_2, \dots, x_S)$が与えられたとき、ソースの辞書サイズ$V_S$に基づく埋め込み重み$U_S \in \mathbb{R}^{E_S \times V_S}$により、埋め込み表現へと変換され、各タイムスタンプ毎に順にセル($\text{cell} \in \mathbb{R}^{h}$)と隠れ状態($\text{hidden} \in \mathbb{R}^{h}$)が計算される。
 
 
@@ -33,7 +33,7 @@ LSTMについて[前回の記事](../nnabla-lstm)を参照ください。
 
 この段階でソース系列は固定長ベクトルであるセルと隠れ状態に変換(Encode)されました2。
 
-# Decoder
+## Decoder
 Encoder側で出力されたセルと隠れ状態からDecoderを用いて系列を生成していきます。
 初期状態は"BOS"記号や"null"記号を開始記号として下記のような数式で一単語目$w_1$を生成します。
 

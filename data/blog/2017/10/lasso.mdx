@@ -1,17 +1,17 @@
 ---
 title: "Lassoの理論と実装 -スパースな解の推定アルゴリズム-"
 date: 2017-10-22T15:31:00+09:00
-tags: ["machine-learning"]
+tags: ["machine-learning", "statistics"]
 draft: false
 ---
 
 
-# はじめに
+## はじめに
 前回は、[「重回帰モデルの理論と実装 -なぜ正則化が必要か-」](ridge)ということで、L2正則化について最小二乗推定量を求めるところまでやりました。今回はその続きということで、L1正則化について取り上げたいと思います。  
 **コードは[こちら](https://github.com/minatosato/Lasso)です。**
 
 
-# 正則化
+## 正則化
 
 重回帰モデル式(詳細は[前回の記事](http://qiita.com/hogefugabar/items/c0d71feeb1111a3c6f47)を参照してください)、
 
@@ -47,7 +47,7 @@ $$
 
 
 ## L2正則化(Ridge)
-特に、$(*)$について、$q=2$のものを**L2正則化(Ridge)**といいます。
+特に、$(*)$について、$q=2$のものを **L2正則化(Ridge)**といいます。
 
 
 $$
@@ -71,7 +71,7 @@ $$
 
 と求めることができました。
 
-# L1正則化(Lasso)
+## L1正則化(Lasso)
 $(*)$について、$q=1$のものを**L1正則化(Lasso)**[[Tibshirani, 1996](http://statweb.stanford.edu/~tibs/lasso/lasso.pdf)]といいます。LassoはLeast absolute shrinkage and selection operatorの略らしいですね。
 
 
@@ -336,7 +336,7 @@ scikit-learnのLasso
 うっ色が被っててわかりにくい。。。
 
 
-# 最後に
+## 最後に
 今回は重回帰モデルにおけるL1正則化、Lassoについて扱いました。
 
 ## 参考

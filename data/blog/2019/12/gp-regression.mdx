@@ -39,7 +39,7 @@ $$
 基底関数を$\phi_{h}(x) = \exp{\left( - \frac{\left(x - \mu_h \right)^2}{\sigma^2} \right)}
 $(ガウス基底関数)としたとき、
 
-![](images/gp/Figure_1.png)
+![](/static/images/gp/Figure_1.png)
 
 ($\mu_h \in (-H, ..., -2, -1, 0, 1, 2, ..., H)$)
 
@@ -74,7 +74,7 @@ y = \sum_{h=-H}^{H} w_h \exp{\left(- \frac{\left(x - \mu_h \right)^2}{\sigma^2}�
 $$
 
 とすると、下記のようなほとんど任意の形の関数が表される。
-![](images/gp/Figure_2.png)
+![](/static/images/gp/Figure_2.png)
 この方法は動径基底関数回帰(radial basis function regression)という。
 
 
@@ -117,7 +117,7 @@ plt.show()
 これを、次元の呪い(curse of dimensionality)という。
 
 入力 $\boldsymbol{x}$ が2次元、$H=1$の例
-![](images/gp/Figure_3.png)
+![](/static/images/gp/Figure_3.png)
 
 
 ```py
@@ -314,9 +314,9 @@ k(\boldsymbol{x}, \boldsymbol{x}^{\prime}) = \theta_1 \exp \left( - \frac{|\bold
 $$
 
 についてサンプルを行ってみると下記のようなサンプルが得られる。
-![](images/gp/Figure_4.png)
+![](/static/images/gp/Figure_4.png)
 また、このときの$K$を可視化すると、
-![](images/gp/Figure_5.png)
+![](/static/images/gp/Figure_5.png)
 となっており、近いデータ間の共分散が大きくなっていることがわかる。
 
 

@@ -1,7 +1,7 @@
 ---
 title: "Character-Aware Neural Language Models"
 date: 2017-12-11T00:34:00+09:00
-tags: ["machine-learning", "natual-language-processing"]
+tags: ["machine-learning", "natural-language-processing", "deep-learning"]
 draft: false
 ---
 
@@ -10,7 +10,7 @@ draft: false
 
 [AAAI 2016](https://www.aaai.org/Conferences/AAAI/aaai16.php)で発表された[Character-Aware Neural Language Models](https://arxiv.org/abs/1508.06615)という論文を読んだので紹介します。
 
-# 言語モデル
+## 言語モデル
 ### 言語モデルとは
 そもそも言語モデル(language model)とは、ある単語の系列が与えられたときに、**次に来る単語**を予測することをモデリングしているものです。例えばある単語の系列
 
@@ -45,7 +45,7 @@ $$
 
 
 
-# Character-Aware Neural Language Models
+## Character-Aware Neural Language Models
 ### 概要
 入力が文字レベルだけの言語モデル作ったよ。出力は相変わらず単語レベルだよ。文字レベルの入力をCNNしてHighwayして出てきた出力をLSTMなRNN-LM(Recurrent neural network language model)に食わせるよ。英語のPenn Treebankにおいては、既存モデルよりパラメータ数60%少ないけど同等の性能だったよ。
 
@@ -70,7 +70,7 @@ $$
 ![](/static/images/lstm-char-cnn/discussion2.png)
 
 
-# Kerasによる実装
+## Kerasによる実装
 ### モデル構築
 
 ```py

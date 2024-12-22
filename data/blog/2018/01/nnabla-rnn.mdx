@@ -1,14 +1,14 @@
 ---
 title: "NNablaでRNNの実装"
 date: 2018-01-06T11:55:00+09:00
-tags: ["machine-learning"]
+tags: ["machine-learning", "deep-learning"]
 draft: false
 ---
 
 あけましておめでとうございます。新年一発目のエントリです。  
 [NNabla](https://nnabla.org/ja/)でKerasっぽくRNNを書きました。
 
-# Recurrent Neural Networks (RNNs)
+## Recurrent Neural Networks (RNNs)
 RNNは現在の入力$\boldsymbol{w}(t)$を重み$U$によって隠れ状態に変換し，過去の入力から生成された隠れ状態$\boldsymbol{s}(t-1)$と足し合わせて出力$\boldsymbol{y}(t)$の生成を行うモデルです。
 
 ![](/static/images/rnn.png)
